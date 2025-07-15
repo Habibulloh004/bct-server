@@ -51,11 +51,9 @@ func main() {
 	// Routes
 	api := app.Group("/api")
 
-	// Auth routes
-	routes.AuthRoutes(api, db)
-
 	// Protected routes
 	// protected := api.Group("/", middleware.JWTMiddleware())
+	routes.AdminAuthRoutes(api, db)
 
 	// All CRUD routes
 	routes.ReviewRoutes(api.Group("/"), db)

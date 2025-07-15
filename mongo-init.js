@@ -24,7 +24,6 @@ db.createCollection('category_sorts');
 // Create indexes for better performance
 db.users.createIndex({ "email": 1 });
 db.users.createIndex({ "phone": 1 });
-db.admins.createIndex({ "name": 1 }, { unique: true });
 db.products.createIndex({ "name": "text", "description": "text" });
 db.categories.createIndex({ "top_category_id": 1 });
 db.products.createIndex({ "category_id": 1 });
@@ -32,16 +31,19 @@ db.banners.createIndex({ "top_category_id": 1 });
 db.banners.createIndex({ "category_id": 1 });
 db.banners.createIndex({ "product_id": 1 });
 
-// Create a default admin user
-// Username: "admin", Password: "admin123"
+// Clear existing admin and create the single default admin
+db.admins.deleteMany({});
+
+// Create the single admin user
+// Username: "admin", Password: "123"
 db.admins.insertOne({
     name: "admin",
-    password: "$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi", // bcrypt hash for "admin123"
+    password: "$2a$10$CwTycUXWue0Thq9StjUM0uyhPFim0L5kKjYWQRkqpGqVjz1VHnqU6", // bcrypt hash for "123"
     created_at: new Date(),
     updated_at: new Date()
 });
 
 print('Database initialized successfully!');
-print('Default admin created:');
+print('Single admin created:');
 print('  Username: admin');
-print('  Password: admin123');
+print('  Password: 123');

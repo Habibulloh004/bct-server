@@ -11,7 +11,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v4"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -22,7 +21,7 @@ type AdminLoginRequest struct {
 	Password string `json:"password"`
 }
 
-type AdminRegisterRequest struct {
+type AdminUpdateRequest struct {
 	Name     string `json:"name"`
 	Password string `json:"password"`
 }
@@ -35,76 +34,7 @@ type AdminAuthResponse struct {
 func AdminAuthRoutes(app fiber.Router, db *mongo.Client) {
 	adminAuth := app.Group("/admin")
 
-	// Admin Register
-	adminAuth.Post("/register", func(c *fiber.Ctx) error {
-		var req AdminRegisterRequest
-		if err := c.BodyParser(&req); err != nil {
-			return c.Status(400).JSON(fiber.Map{
-				"error":   "Invalid request body",
-				"details": err.Error(),
-			})
-		}
-
-		// Validate required fields
-		if req.Name == "" || req.Password == "" {
-			return c.Status(400).JSON(fiber.Map{
-				"error": "Name and password are required",
-			})
-		}
-
-		collection := config.GetCollection(db, "admins")
-
-		// Check if admin already exists by name
-		var existingAdmin models.Admin
-		err := collection.FindOne(context.TODO(), bson.M{"name": req.Name}).Decode(&existingAdmin)
-		if err == nil {
-			return c.Status(400).JSON(fiber.Map{"error": "Admin with this name already exists"})
-		}
-
-		// Hash password
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{
-				"error":   "Failed to hash password",
-				"details": err.Error(),
-			})
-		}
-
-		// Create admin
-		admin := models.Admin{
-			Name:      req.Name,
-			Password:  string(hashedPassword),
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-
-		result, err := collection.InsertOne(context.TODO(), admin)
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{
-				"error":   "Failed to create admin",
-				"details": err.Error(),
-			})
-		}
-
-		admin.ID = result.InsertedID.(primitive.ObjectID)
-		admin.Password = "" // Don't return password
-
-		// Generate JWT token
-		token, err := generateAdminJWT(admin.ID.Hex(), admin.Name)
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{
-				"error":   "Failed to generate token",
-				"details": err.Error(),
-			})
-		}
-
-		return c.Status(201).JSON(AdminAuthResponse{
-			Token: token,
-			Admin: admin,
-		})
-	})
-
-	// Admin Login
+	// Admin Login - only login with existing admin
 	adminAuth.Post("/login", func(c *fiber.Ctx) error {
 		var req AdminLoginRequest
 		if err := c.BodyParser(&req); err != nil {
@@ -117,6 +47,7 @@ func AdminAuthRoutes(app fiber.Router, db *mongo.Client) {
 
 		collection := config.GetCollection(db, "admins")
 
+		// Find the single admin (there should only be one)
 		var admin models.Admin
 		err := collection.FindOne(context.TODO(), bson.M{"name": req.Name}).Decode(&admin)
 		if err != nil {
@@ -143,33 +74,77 @@ func AdminAuthRoutes(app fiber.Router, db *mongo.Client) {
 		})
 	})
 
-	// Admin Profile (Protected)
-	adminAuth.Get("/profile", func(c *fiber.Ctx) error {
-		// Extract admin ID from JWT token
-		adminID := c.Locals("admin_id")
-		if adminID == nil {
-			return c.Status(401).JSON(fiber.Map{"error": "Unauthorized"})
+	// Admin Update - update existing admin (protected route)
+	adminAuth.Put("/update", func(c *fiber.Ctx) error {
+		var req AdminUpdateRequest
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 		}
 
-		id, err := primitive.ObjectIDFromHex(adminID.(string))
-		if err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "Invalid admin ID"})
+		if req.Name == "" || req.Password == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "Name and password are required"})
 		}
 
 		collection := config.GetCollection(db, "admins")
+
+		// Find the single admin
 		var admin models.Admin
-		err = collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&admin)
+		err := collection.FindOne(context.TODO(), bson.M{}).Decode(&admin)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Admin not found"})
+		}
+
+		// Hash new password
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
+		}
+
+		// Update admin
+		updateData := bson.M{
+			"name":       req.Name,
+			"password":   string(hashedPassword),
+			"updated_at": time.Now(),
+		}
+
+		_, err = collection.UpdateOne(context.TODO(), bson.M{"_id": admin.ID}, bson.M{"$set": updateData})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to update admin"})
+		}
+
+		// Get updated admin
+		err = collection.FindOne(context.TODO(), bson.M{"_id": admin.ID}).Decode(&admin)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch updated admin"})
+		}
+
+		admin.Password = "" // Don't return password
+
+		// Generate new JWT token with updated info
+		token, err := generateAdminJWT(admin.ID.Hex(), admin.Name)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to generate token"})
+		}
+
+		return c.JSON(AdminAuthResponse{
+			Token: token,
+			Admin: admin,
+		})
+	})
+
+	// Admin Profile - get current admin info (protected route)
+	adminAuth.Get("/profile", func(c *fiber.Ctx) error {
+		collection := config.GetCollection(db, "admins")
+
+		// Find the single admin
+		var admin models.Admin
+		err := collection.FindOne(context.TODO(), bson.M{}).Decode(&admin)
 		if err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "Admin not found"})
 		}
 
 		admin.Password = "" // Don't return password
 		return c.JSON(admin)
-	})
-
-	// Admin Logout (Optional - mainly for client-side token removal)
-	adminAuth.Post("/logout", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "Logged out successfully"})
 	})
 }
 
