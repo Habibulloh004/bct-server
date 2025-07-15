@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"log"
 	"os"
 	"time"
 
@@ -38,8 +39,11 @@ func AdminAuthRoutes(app fiber.Router, db *mongo.Client) {
 	adminAuth.Post("/login", func(c *fiber.Ctx) error {
 		var req AdminLoginRequest
 		if err := c.BodyParser(&req); err != nil {
+			log.Printf("Error parsing request body: %v", err)
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 		}
+
+		log.Printf("Login attempt for admin: %s", req.Name)
 
 		if req.Name == "" || req.Password == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "Name and password are required"})
@@ -47,26 +51,41 @@ func AdminAuthRoutes(app fiber.Router, db *mongo.Client) {
 
 		collection := config.GetCollection(db, "admins")
 
-		// Find the single admin (there should only be one)
+		// Find the admin by name
 		var admin models.Admin
 		err := collection.FindOne(context.TODO(), bson.M{"name": req.Name}).Decode(&admin)
 		if err != nil {
+			log.Printf("Admin not found: %s, error: %v", req.Name, err)
 			return c.Status(401).JSON(fiber.Map{"error": "Invalid credentials"})
 		}
+
+		log.Printf("Found admin: %s, stored password hash: %s", admin.Name, admin.Password)
+		log.Printf("Input password: %s", req.Password)
 
 		// Check password
 		err = bcrypt.CompareHashAndPassword([]byte(admin.Password), []byte(req.Password))
 		if err != nil {
+			log.Printf("Password comparison failed for admin %s: %v", admin.Name, err)
+			
+			// Debug: Generate hash for the input password to compare
+			testHash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+			log.Printf("Generated hash for input password '%s': %s", req.Password, string(testHash))
+			
 			return c.Status(401).JSON(fiber.Map{"error": "Invalid credentials"})
 		}
+
+		log.Printf("Password verification successful for admin: %s", admin.Name)
 
 		admin.Password = "" // Don't return password
 
 		// Generate JWT token
 		token, err := generateAdminJWT(admin.ID.Hex(), admin.Name)
 		if err != nil {
+			log.Printf("Failed to generate JWT token: %v", err)
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to generate token"})
 		}
+
+		log.Printf("Login successful for admin: %s", admin.Name)
 
 		return c.JSON(AdminAuthResponse{
 			Token: token,
@@ -146,6 +165,39 @@ func AdminAuthRoutes(app fiber.Router, db *mongo.Client) {
 		admin.Password = "" // Don't return password
 		return c.JSON(admin)
 	})
+
+	// Debug endpoint to check admin existence and password hash
+	adminAuth.Get("/debug", func(c *fiber.Ctx) error {
+		collection := config.GetCollection(db, "admins")
+
+		var admin models.Admin
+		err := collection.FindOne(context.TODO(), bson.M{"name": "admin"}).Decode(&admin)
+		if err != nil {
+			return c.JSON(fiber.Map{
+				"error":       "Admin not found",
+				"admin_count": getAdminCount(collection),
+			})
+		}
+
+		// Test password hash
+		testPassword := "bct123"
+		err = bcrypt.CompareHashAndPassword([]byte(admin.Password), []byte(testPassword))
+		passwordValid := err == nil
+
+		return c.JSON(fiber.Map{
+			"admin_exists":    true,
+			"admin_name":      admin.Name,
+			"password_hash":   admin.Password,
+			"test_password":   testPassword,
+			"password_valid":  passwordValid,
+			"admin_count":     getAdminCount(collection),
+		})
+	})
+}
+
+func getAdminCount(collection *mongo.Collection) int64 {
+	count, _ := collection.CountDocuments(context.TODO(), bson.M{})
+	return count
 }
 
 func generateAdminJWT(adminID, adminName string) (string, error) {

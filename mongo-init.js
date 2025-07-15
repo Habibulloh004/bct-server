@@ -36,9 +36,10 @@ db.admins.deleteMany({});
 
 // Create the single admin user
 // Username: "admin", Password: "123"
+// This hash is generated with bcrypt cost 10 for password "123"
 db.admins.insertOne({
     name: "admin",
-    password: "$2a$10$CwTycUXWue0Thq9StjUM0uyhPFim0L5kKjYWQRkqpGqVjz1VHnqU6", // bcrypt hash for "123"
+    password: "$2a$10$HLjC0Amd/oTcHvQdhwzyguApEnT2n9XThdJXW.Ib1cBZveRAUe6T2", // bcrypt hash for "123"
     created_at: new Date(),
     updated_at: new Date()
 });
