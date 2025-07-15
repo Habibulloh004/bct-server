@@ -1,12 +1,12 @@
 # Fiber E-commerce Backend
 
-A complete e-commerce backend built with Go Fiber, MongoDB, and Docker. This backend provides comprehensive CRUD operations for all e-commerce entities, user authentication, and file upload functionality.
+A complete e-commerce backend built with Go Fiber, MongoDB, and Docker. This backend provides comprehensive CRUD operations for all e-commerce entities, user authentication, admin authentication, and file upload functionality.
 
 ## Features
 
 - 🚀 **Fast & Lightweight**: Built with Go Fiber framework
 - 🗄️ **MongoDB Database**: NoSQL database with proper indexing
-- 🔐 **JWT Authentication**: Secure user authentication system
+- 🔐 **Dual Authentication**: User and Admin authentication systems
 - 📁 **File Upload**: Image upload with URL response
 - 🐳 **Docker Support**: Complete containerization
 - 📊 **CRUD Operations**: Full CRUD for all models
@@ -16,13 +16,13 @@ A complete e-commerce backend built with Go Fiber, MongoDB, and Docker. This bac
 
 ## Models Included
 
-- Users (Authentication)
+- Users (Regular user authentication)
+- Admins (Admin panel authentication)
 - Reviews
 - TopCategory & Category
 - Products
 - Certificates & Licenses
 - News & Partners
-- Admin Management
 - Currency
 - Banners & Banner Sorting
 - Contacts & Backgrounds
@@ -67,17 +67,35 @@ docker-compose up mongodb -d
 make dev
 ```
 
+## Authentication Systems
+
+### User Authentication
+- Regular users (customers)
+- Phone-based login
+- JWT tokens
+
+### Admin Authentication  
+- Admin panel users
+- Name-based login
+- JWT tokens with admin role
+
 ## API Endpoints
 
-### Authentication
+### User Authentication
 - `POST /api/auth/register` - User registration
 - `POST /api/auth/login` - User login
+
+### Admin Authentication
+- `POST /api/admin/register` - Admin registration
+- `POST /api/admin/login` - Admin login
+- `GET /api/admin/profile` - Get admin profile (protected)
+- `POST /api/admin/logout` - Admin logout
 
 ### File Upload
 - `POST /api/files/upload` - Upload single file
 - `POST /api/files/upload-multiple` - Upload multiple files
 
-### CRUD Endpoints (All Protected)
+### CRUD Endpoints
 All CRUD endpoints follow the pattern: `/api/{resource}`
 
 - `GET /api/{resource}` - Get all (with pagination)
@@ -118,12 +136,26 @@ All CRUD endpoints follow the pattern: `/api/{resource}`
 #### Search
 - `search` - Text search in product names and descriptions (products endpoint)
 
+## Default Admin Account
+
+A default admin account is created automatically:
+- **Username**: `admin`
+- **Password**: `admin123`
+
+You can use these credentials to access the admin panel immediately after setup.
+
 ## Authentication
 
-The API uses JWT tokens for authentication. After login/register, include the token in the Authorization header:
-
+### User Auth
+Include the JWT token in the Authorization header:
 ```
-Authorization: Bearer <your-jwt-token>
+Authorization: Bearer <user-jwt-token>
+```
+
+### Admin Auth
+Include the admin JWT token in the Authorization header:
+```
+Authorization: Bearer <admin-jwt-token>
 ```
 
 ## File Upload
@@ -154,50 +186,29 @@ PORT=3000
 APP_ENV=development
 ```
 
-## Project Structure
-
-```
-.
-├── config/           # Database configuration
-├── middleware/       # Auth middleware
-├── models/          # Data models
-├── routes/          # API routes
-├── uploads/         # File uploads directory
-├── docker-compose.yml
-├── Dockerfile
-├── go.mod
-├── main.go
-└── README.md
-```
-
-## Development Commands
-
-```bash
-# Start development server with auto-reload
-make dev
-
-# Build application
-make build
-
-# Run tests
-make test
-
-# Format code
-make fmt
-
-# Docker commands
-make docker-up      # Start containers
-make docker-down    # Stop containers
-make docker-build   # Build images
-make logs          # View logs
-
-# Clean build artifacts
-make clean
-```
-
 ## API Examples
 
-### Register User
+### Admin Registration
+```bash
+curl -X POST http://localhost:3000/api/admin/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "superadmin",
+    "password": "securepassword"
+  }'
+```
+
+### Admin Login
+```bash
+curl -X POST http://localhost:3000/api/admin/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "admin",
+    "password": "admin123"
+  }'
+```
+
+### User Registration
 ```bash
 curl -X POST http://localhost:3000/api/auth/register \
   -H "Content-Type: application/json" \
@@ -209,21 +220,11 @@ curl -X POST http://localhost:3000/api/auth/register \
   }'
 ```
 
-### Login
-```bash
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": "+998901234567",
-    "password": "password123"
-  }'
-```
-
-### Create Product (Protected)
+### Create Product (Admin Protected)
 ```bash
 curl -X POST http://localhost:3000/api/products \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <your-token>" \
+  -H "Authorization: Bearer <admin-token>" \
   -d '{
     "name": "Product Name",
     "description": "Product description",
@@ -235,28 +236,62 @@ curl -X POST http://localhost:3000/api/products \
   }'
 ```
 
-### Upload File (Protected)
+### Upload File (Admin Protected)
 ```bash
 curl -X POST http://localhost:3000/api/files/upload \
-  -H "Authorization: Bearer <your-token>" \
+  -H "Authorization: Bearer <admin-token>" \
   -F "file=@/path/to/your/image.jpg"
 ```
+
+## Project Structure
+
+```
+.
+├── config/           # Database configuration
+├── middleware/       # Auth middleware (user & admin)
+├── models/          # Data models
+├── routes/          # API routes
+│   ├── auth.go      # User authentication
+│   ├── admin_auth.go # Admin authentication
+│   ├── crud.go      # Main CRUD operations
+│   ├── file.go      # File upload
+│   └── other_models.go # Additional models
+├── uploads/         # File uploads directory
+├── docker-compose.yml
+├── Dockerfile
+├── go.mod
+├── main.go
+├── mongo-init.js    # Database initialization
+└── README.md
+```
+
+## Security Features
+
+- Dual authentication systems (user & admin)
+- Password hashing with bcrypt
+- JWT token authentication with role separation
+- Input validation
+- CORS enabled
+- File type validation
+- Request size limits
+- Protected admin routes
 
 ## Database Schema
 
 The application automatically creates indexes for optimal performance:
 - Unique indexes on user email and phone
+- Unique index on admin name
 - Text indexes for product search
 - Foreign key indexes for relationships
 
-## Security Features
+## Admin Panel Integration
 
-- Password hashing with bcrypt
-- JWT token authentication
-- Input validation
-- CORS enabled
-- File type validation
-- Request size limits
+This backend is designed to work with the Next.js Admin Panel:
+- Admin authentication endpoints
+- JWT token-based protection
+- Complete CRUD operations
+- File upload support
+- Real-time data management
 
 ## Contributing
 
