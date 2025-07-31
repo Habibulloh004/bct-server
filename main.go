@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"fiber-ecommerce/config"
-	// "fiber-ecommerce/middleware"
 	"fiber-ecommerce/routes"
 
 	"github.com/gofiber/fiber/v2"
@@ -48,40 +47,79 @@ func main() {
 	// Static files for uploads
 	app.Static("/uploads", "./uploads")
 
-	// Routes
+	// API Routes
 	api := app.Group("/api")
 
-	// Protected routes
-	// protected := api.Group("/", middleware.JWTMiddleware())
+	// Authentication routes
 	routes.AdminAuthRoutes(api, db)
 
-	// All CRUD routes
-	routes.ReviewRoutes(api.Group("/"), db)
-	routes.TopCategoryRoutes(api.Group("/"), db)
-	routes.CategoryRoutes(api.Group("/"), db)
-	routes.ProductRoutes(api.Group("/"), db)
-	routes.SertificateRoutes(api.Group("/"), db)
-	routes.LicenseRoutes(api.Group("/"), db)
-	routes.NewsRoutes(api.Group("/"), db)
-	routes.PartnerRoutes(api.Group("/"), db)
-	routes.AdminRoutes(api.Group("/"), db)
-	routes.CurrencyRoutes(api.Group("/"), db)
-	routes.BannerRoutes(api.Group("/"), db)
-	routes.SelectReviewRoutes(api.Group("/"), db)
-	routes.BackgroundRoutes(api.Group("/"), db)
-	routes.ContactsRoutes(api.Group("/"), db)
-	routes.BannerSortRoutes(api.Group("/"), db)
-	routes.TopCategorySortRoutes(api.Group("/"), db)
-	routes.CategorySortRoutes(api.Group("/"), db)
+	// Core models CRUD routes (updated models)
+	routes.ClientRoutes(api, db)
+	routes.TopCategoryRoutes(api, db)
+	routes.CategoryRoutes(api, db)
+	routes.ProductRoutes(api, db)
+	routes.OrderRoutes(api, db)
+
+	// Information pages (singleton models)
+	routes.AboutRoutes(api, db)
+	routes.LinksRoutes(api, db)
+
+	// Media/Content routes
+	routes.VendorRoutes(api, db)
+	routes.ProjectRoutes(api, db)
+
+	// Existing CRUD routes
+	routes.ReviewRoutes(api, db)
+	routes.SertificateRoutes(api, db)
+	routes.LicenseRoutes(api, db)
+	routes.NewsRoutes(api, db)
+	routes.PartnerRoutes(api, db)
+	routes.AdminRoutes(api, db)
+	routes.CurrencyRoutes(api, db)
+	routes.BannerRoutes(api, db)
+	routes.SelectReviewRoutes(api, db)
+	routes.BackgroundRoutes(api, db)
+	routes.ContactsRoutes(api, db)
+	routes.BannerSortRoutes(api, db)
+	routes.TopCategorySortRoutes(api, db)
+	routes.CategorySortRoutes(api, db)
 
 	// File upload route
-	routes.FileRoutes(api.Group("/"), db)
+	routes.FileRoutes(api, db)
+
+	// Root endpoint
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"message": "Fiber E-commerce API",
+			"version": "2.0.0",
+			"status":  "running",
+			"endpoints": fiber.Map{
+				"health":        "/health",
+				"api":           "/api/*",
+				"uploads":       "/uploads/*",
+				"admin_login":   "/api/admin/login",
+				"documentation": "See README.md for full API documentation",
+			},
+		})
+	})
 
 	// Health check
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
-			"status":  "ok",
-			"message": "Server is running",
+			"status":    "ok",
+			"message":   "Server is running",
+			"timestamp": time.Now().UTC(),
+			"database":  "connected",
+		})
+	})
+
+	// 404 handler for debugging
+	app.Use(func(c *fiber.Ctx) error {
+		return c.Status(404).JSON(fiber.Map{
+			"error":   "Route not found",
+			"path":    c.Path(),
+			"method":  c.Method(),
+			"message": "Please check the API documentation for available endpoints",
 		})
 	})
 
@@ -91,6 +129,11 @@ func main() {
 		port = "3000"
 	}
 
-	log.Printf("Server starting on port %s", port)
+	log.Printf("🚀 Server starting on port %s", port)
+	log.Printf("📚 API documentation: http://localhost:%s/", port)
+	log.Printf("🔍 Health check: http://localhost:%s/health", port)
+	log.Printf("🔐 Admin login: http://localhost:%s/api/admin/login", port)
+	log.Printf("📁 File uploads: http://localhost:%s/uploads/", port)
+
 	log.Fatal(app.Listen(":" + port))
 }

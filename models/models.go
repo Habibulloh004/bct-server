@@ -30,9 +30,116 @@ type RegisterRequest struct {
 }
 
 type AuthResponse struct {
-	// Token string `json:"token"`
-	User  User   `json:"user"`
+	User User `json:"user"`
 }
+
+// Client model (from schema diagram)
+type Client struct {
+	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Name      string             `json:"name" bson:"name"`
+	Email     string             `json:"email" bson:"email"`
+	Password  string             `json:"password" bson:"password"`
+	Phone     string             `json:"phone" bson:"phone"`
+	Image     string             `json:"image" bson:"image"`
+	URL       string             `json:"url" bson:"url"`
+	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+}
+
+// TopCategory model (updated)
+type TopCategory struct {
+	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Name      string             `json:"name" bson:"name"`
+	Image     string             `json:"image" bson:"image"`
+	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+}
+
+// Category model (updated)
+type Category struct {
+	ID            primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
+	Name          string              `json:"name" bson:"name"`
+	Image         string              `json:"image" bson:"image"`
+	TopCategoryID *primitive.ObjectID `json:"top_category_id" bson:"top_category_id"`
+	CreatedAt     time.Time           `json:"created_at" bson:"created_at"`
+	UpdatedAt     time.Time           `json:"updated_at" bson:"updated_at"`
+}
+
+// Product model (updated)
+type Product struct {
+	ID           primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
+	Name         string              `json:"name" bson:"name"`
+	AdsTitle     string              `json:"ads_title" bson:"ads_title"`
+	Image        []string            `json:"image" bson:"image"`
+	Description  string              `json:"description" bson:"description"`
+	Guarantee    string              `json:"guarantee" bson:"guarantee"`
+	SerialNumber string              `json:"serial_number" bson:"serial_number"`
+	CategoryID   *primitive.ObjectID `json:"category_id" bson:"category_id"`
+	CreatedAt    time.Time           `json:"created_at" bson:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at" bson:"updated_at"`
+}
+
+// Order model (from schema diagram)
+type Order struct {
+	ID                primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
+	Phone             string              `json:"phone" bson:"phone"`
+	PayType           string              `json:"pay_type" bson:"pay_type"`
+	ProductsWithCount []ProductWithCount  `json:"products" bson:"products"`
+	ClientID          *primitive.ObjectID `json:"client_id" bson:"client_id"`
+	CreatedAt         time.Time           `json:"created_at" bson:"created_at"`
+	UpdatedAt         time.Time           `json:"updated_at" bson:"updated_at"`
+}
+
+type ProductWithCount struct {
+	ProductID primitive.ObjectID `json:"product_id" bson:"product_id"`
+	Count     int                `json:"count" bson:"count"`
+}
+
+// About model (from schema diagram)
+type About struct {
+	ID           primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Creation     string             `json:"creation" bson:"creation"`
+	Clients      string             `json:"clients" bson:"clients"`
+	Partners     string             `json:"partners" bson:"partners"`
+	Technologies string             `json:"technologies" bson:"technologies"`
+	Scaners      string             `json:"scaners" bson:"scaners"`
+	Scales       string             `json:"scales" bson:"scales"`
+	Printers     string             `json:"printers" bson:"printers"`
+	Cashiers     string             `json:"cashiers" bson:"cashiers"`
+	CreatedAt    time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt    time.Time          `json:"updated_at" bson:"updated_at"`
+}
+
+// Vendor model (from schema diagram)
+type Vendor struct {
+	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Image     string             `json:"image" bson:"image"`
+	URL       string             `json:"url" bson:"url"`
+	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+}
+
+// Project model (from schema diagram)
+type Project struct {
+	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Image     string             `json:"image" bson:"image"`
+	URL       string             `json:"url" bson:"url"`
+	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+}
+
+// Links model (from schema diagram)
+type Links struct {
+	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Facebook  string             `json:"facebook" bson:"facebook"`
+	Instagram string             `json:"instagram" bson:"instagram"`
+	LinkedIn  string             `json:"linkedin" bson:"linkedin"`
+	YouTube   string             `json:"youtube" bson:"youtube"`
+	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+}
+
+// Existing models from your code (keeping as they are)
 
 // Reviews model
 type Reviews struct {
@@ -42,41 +149,6 @@ type Reviews struct {
 	Email     string             `json:"email" bson:"email"`
 	Message   string             `json:"message" bson:"message"`
 	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
-}
-
-// TopCategory model
-type TopCategory struct {
-	ID         primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	Name       string             `json:"name" bson:"name"`
-	CreatedAt  time.Time          `json:"created_at" bson:"created_at"`
-	UpdatedAt  time.Time          `json:"updated_at" bson:"updated_at"`
-	Categories []Category         `json:"categories,omitempty" bson:"categories,omitempty"`
-}
-
-// Category model
-type Category struct {
-	ID                primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
-	Name              string              `json:"name" bson:"name"`
-	Image             string              `json:"image" bson:"image"`
-	CreatedAt         time.Time           `json:"created_at" bson:"created_at"`
-	UpdatedAt         time.Time           `json:"updated_at" bson:"updated_at"`
-	TopCategoryID     *primitive.ObjectID `json:"top_category_id" bson:"top_category_id"`
-	Products          []Product           `json:"products,omitempty" bson:"products,omitempty"`
-	TopCategorySortID *int                `json:"top_category_sort_id" bson:"top_category_sort_id"`
-}
-
-// Product model
-type Product struct {
-	ID          primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
-	Name        string              `json:"name" bson:"name"`
-	Description string              `json:"description" bson:"description"`
-	Feature     string              `json:"feature" bson:"feature"`
-	Price       string              `json:"price" bson:"price"`
-	Brand       string              `json:"brand" bson:"brand"`
-	Image       []string            `json:"image" bson:"image"`
-	CreatedAt   time.Time           `json:"created_at" bson:"created_at"`
-	UpdatedAt   time.Time           `json:"updated_at" bson:"updated_at"`
-	CategoryID  *primitive.ObjectID `json:"category_id" bson:"category_id"`
 }
 
 // Sertificate model
@@ -165,22 +237,22 @@ type Background struct {
 
 // Contacts model
 type Contacts struct {
-	ID              primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	CompanyName     string             `json:"company_name" bson:"company_name"`
-	Phone1          string             `json:"phone1" bson:"phone1"`
-	Phone2          string             `json:"phone2" bson:"phone2"`
-	WorkHours       string             `json:"work_hours" bson:"work_hours"`
-	Email           string             `json:"email" bson:"email"`
-	Address         string             `json:"address" bson:"address"`
-	Telegram        string             `json:"telegram" bson:"telegram"`
-	TelegramBot     string             `json:"telegram_bot" bson:"telegram_bot"`
-	Facebook        string             `json:"facebook" bson:"facebook"`
-	Instagram       string             `json:"instagram" bson:"instagram"`
-	Youtube         string             `json:"youtube" bson:"youtube"`
-	FooterInfo      string             `json:"footer_info" bson:"footer_info"`
-	ExperienceInfo  string             `json:"experience_info" bson:"experience_info"`
-	CreatedAt       time.Time          `json:"created_at" bson:"created_at"`
-	UpdatedAt       time.Time          `json:"updated_at" bson:"updated_at"`
+	ID             primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	CompanyName    string             `json:"company_name" bson:"company_name"`
+	Phone1         string             `json:"phone1" bson:"phone1"`
+	Phone2         string             `json:"phone2" bson:"phone2"`
+	WorkHours      string             `json:"work_hours" bson:"work_hours"`
+	Email          string             `json:"email" bson:"email"`
+	Address        string             `json:"address" bson:"address"`
+	Telegram       string             `json:"telegram" bson:"telegram"`
+	TelegramBot    string             `json:"telegram_bot" bson:"telegram_bot"`
+	Facebook       string             `json:"facebook" bson:"facebook"`
+	Instagram      string             `json:"instagram" bson:"instagram"`
+	Youtube        string             `json:"youtube" bson:"youtube"`
+	FooterInfo     string             `json:"footer_info" bson:"footer_info"`
+	ExperienceInfo string             `json:"experience_info" bson:"experience_info"`
+	CreatedAt      time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
 // BannerSort model
