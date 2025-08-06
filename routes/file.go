@@ -13,14 +13,46 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+const (
+	MaxFileSize = 50 * 1024 * 1024 // 50MB in bytes
+)
+
 func FileRoutes(app fiber.Router, db *mongo.Client) {
 	files := app.Group("/files")
 
 	// Upload single file
 	files.Post("/upload", func(c *fiber.Ctx) error {
+		// Check content length first
+		if c.Request().Header.ContentLength() > MaxFileSize {
+			return c.Status(413).JSON(fiber.Map{
+				"error": fmt.Sprintf("File too large. Maximum size allowed is %d MB", MaxFileSize/(1024*1024)),
+				"max_size_mb": MaxFileSize / (1024 * 1024),
+				"received_size_mb": c.Request().Header.ContentLength() / (1024 * 1024),
+			})
+		}
+
 		file, err := c.FormFile("file")
 		if err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "No file uploaded"})
+			// Provide more specific error messages
+			if strings.Contains(err.Error(), "request body too large") || strings.Contains(err.Error(), "too large") {
+				return c.Status(413).JSON(fiber.Map{
+					"error": fmt.Sprintf("File too large. Maximum size allowed is %d MB", MaxFileSize/(1024*1024)),
+					"max_size_mb": MaxFileSize / (1024 * 1024),
+				})
+			}
+			return c.Status(400).JSON(fiber.Map{
+				"error": "Failed to parse uploaded file",
+				"details": err.Error(),
+			})
+		}
+
+		// Additional file size check
+		if file.Size > MaxFileSize {
+			return c.Status(413).JSON(fiber.Map{
+				"error": fmt.Sprintf("File too large. Maximum size allowed is %d MB", MaxFileSize/(1024*1024)),
+				"max_size_mb": MaxFileSize / (1024 * 1024),
+				"file_size_mb": file.Size / (1024 * 1024),
+			})
 		}
 
 		// Validate file type
@@ -35,7 +67,11 @@ func FileRoutes(app fiber.Router, db *mongo.Client) {
 
 		ext := strings.ToLower(filepath.Ext(file.Filename))
 		if !allowedTypes[ext] {
-			return c.Status(400).JSON(fiber.Map{"error": "Invalid file type"})
+			return c.Status(400).JSON(fiber.Map{
+				"error": "Invalid file type",
+				"allowed_types": []string{".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"},
+				"received_type": ext,
+			})
 		}
 
 		// Generate unique filename
@@ -44,12 +80,18 @@ func FileRoutes(app fiber.Router, db *mongo.Client) {
 
 		// Create uploads directory if it doesn't exist
 		if err := os.MkdirAll("uploads", 0755); err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Failed to create upload directory"})
+			return c.Status(500).JSON(fiber.Map{
+				"error": "Failed to create upload directory",
+				"details": err.Error(),
+			})
 		}
 
 		// Save file
 		if err := c.SaveFile(file, uploadPath); err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Failed to save file"})
+			return c.Status(500).JSON(fiber.Map{
+				"error": "Failed to save file",
+				"details": err.Error(),
+			})
 		}
 
 		// Return file URL
@@ -64,17 +106,42 @@ func FileRoutes(app fiber.Router, db *mongo.Client) {
 
 	// Upload multiple files
 	files.Post("/upload-multiple", func(c *fiber.Ctx) error {
+		// Check content length first
+		if c.Request().Header.ContentLength() > MaxFileSize {
+			return c.Status(413).JSON(fiber.Map{
+				"error": fmt.Sprintf("Total upload size too large. Maximum size allowed is %d MB", MaxFileSize/(1024*1024)),
+				"max_size_mb": MaxFileSize / (1024 * 1024),
+				"received_size_mb": c.Request().Header.ContentLength() / (1024 * 1024),
+			})
+		}
+
 		form, err := c.MultipartForm()
 		if err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "Failed to parse form"})
+			// Provide more specific error messages
+			if strings.Contains(err.Error(), "request body too large") || strings.Contains(err.Error(), "too large") {
+				return c.Status(413).JSON(fiber.Map{
+					"error": fmt.Sprintf("Upload too large. Maximum total size allowed is %d MB", MaxFileSize/(1024*1024)),
+					"max_size_mb": MaxFileSize / (1024 * 1024),
+				})
+			}
+			return c.Status(400).JSON(fiber.Map{
+				"error": "Failed to parse multipart form",
+				"details": err.Error(),
+			})
 		}
 
 		files := form.File["files"]
 		if len(files) == 0 {
-			return c.Status(400).JSON(fiber.Map{"error": "No files uploaded"})
+			return c.Status(400).JSON(fiber.Map{
+				"error": "No files uploaded",
+				"hint": "Make sure to use 'files' as the form field name for multiple file uploads",
+			})
 		}
 
 		var uploadedFiles []models.FileUploadResponse
+		var failedFiles []fiber.Map
+		var totalSize int64 = 0
+
 		allowedTypes := map[string]bool{
 			".jpg":  true,
 			".jpeg": true,
@@ -84,16 +151,48 @@ func FileRoutes(app fiber.Router, db *mongo.Client) {
 			".svg":  true,
 		}
 
-		// Create uploads directory if it doesn't exist
-		if err := os.MkdirAll("uploads", 0755); err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Failed to create upload directory"})
+		// Calculate total size first
+		for _, file := range files {
+			totalSize += file.Size
 		}
 
-		for _, file := range files {
+		if totalSize > MaxFileSize {
+			return c.Status(413).JSON(fiber.Map{
+				"error": fmt.Sprintf("Total upload size too large. Maximum size allowed is %d MB", MaxFileSize/(1024*1024)),
+				"max_size_mb": MaxFileSize / (1024 * 1024),
+				"total_size_mb": totalSize / (1024 * 1024),
+			})
+		}
+
+		// Create uploads directory if it doesn't exist
+		if err := os.MkdirAll("uploads", 0755); err != nil {
+			return c.Status(500).JSON(fiber.Map{
+				"error": "Failed to create upload directory",
+				"details": err.Error(),
+			})
+		}
+
+		for i, file := range files {
+			// Individual file size check
+			if file.Size > MaxFileSize {
+				failedFiles = append(failedFiles, fiber.Map{
+					"filename": file.Filename,
+					"error": fmt.Sprintf("File too large (%d MB). Maximum size per file is %d MB", 
+						file.Size/(1024*1024), MaxFileSize/(1024*1024)),
+					"index": i,
+				})
+				continue
+			}
+
 			// Validate file type
 			ext := strings.ToLower(filepath.Ext(file.Filename))
 			if !allowedTypes[ext] {
-				continue // Skip invalid files
+				failedFiles = append(failedFiles, fiber.Map{
+					"filename": file.Filename,
+					"error": "Invalid file type: " + ext,
+					"index": i,
+				})
+				continue
 			}
 
 			// Generate unique filename
@@ -102,7 +201,12 @@ func FileRoutes(app fiber.Router, db *mongo.Client) {
 
 			// Save file
 			if err := c.SaveFile(file, uploadPath); err != nil {
-				continue // Skip files that failed to save
+				failedFiles = append(failedFiles, fiber.Map{
+					"filename": file.Filename,
+					"error": "Failed to save file: " + err.Error(),
+					"index": i,
+				})
+				continue
 			}
 
 			// Add to uploaded files list
@@ -115,12 +219,36 @@ func FileRoutes(app fiber.Router, db *mongo.Client) {
 		}
 
 		if len(uploadedFiles) == 0 {
-			return c.Status(400).JSON(fiber.Map{"error": "No valid files were uploaded"})
+			return c.Status(400).JSON(fiber.Map{
+				"error": "No valid files were uploaded",
+				"failed_files": failedFiles,
+				"allowed_types": []string{".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"},
+				"max_size_mb": MaxFileSize / (1024 * 1024),
+			})
 		}
 
-		return c.JSON(fiber.Map{
+		response := fiber.Map{
 			"files": uploadedFiles,
 			"count": len(uploadedFiles),
+			"success_count": len(uploadedFiles),
+			"total_attempted": len(files),
+		}
+
+		if len(failedFiles) > 0 {
+			response["failed_files"] = failedFiles
+			response["failed_count"] = len(failedFiles)
+		}
+
+		return c.JSON(response)
+	})
+
+	// Get upload limits info
+	files.Get("/limits", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"max_file_size_bytes": MaxFileSize,
+			"max_file_size_mb": MaxFileSize / (1024 * 1024),
+			"allowed_types": []string{".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"},
+			"upload_directory": "uploads/",
 		})
 	})
 }
