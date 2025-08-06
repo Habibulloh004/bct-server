@@ -38,7 +38,6 @@ type UserAuthResponse struct {
 	User  User   `json:"user"`
 }
 
-
 // Client model (from schema diagram)
 type Client struct {
 	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
@@ -61,14 +60,15 @@ type TopCategory struct {
 	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
-// Category model (updated)
+// Category model (updated with top_category_name)
 type Category struct {
-	ID            primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
-	Name          string              `json:"name" bson:"name"`
-	Image         string              `json:"image" bson:"image"`
-	TopCategoryID *primitive.ObjectID `json:"top_category_id" bson:"top_category_id"`
-	CreatedAt     time.Time           `json:"created_at" bson:"created_at"`
-	UpdatedAt     time.Time           `json:"updated_at" bson:"updated_at"`
+	ID              primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
+	Name            string              `json:"name" bson:"name"`
+	Image           string              `json:"image" bson:"image"`
+	TopCategoryID   *primitive.ObjectID `json:"top_category_id" bson:"top_category_id"`
+	TopCategoryName string              `json:"top_category_name,omitempty" bson:"top_category_name,omitempty"`
+	CreatedAt       time.Time           `json:"created_at" bson:"created_at"`
+	UpdatedAt       time.Time           `json:"updated_at" bson:"updated_at"`
 }
 
 // Product model (updated with all required fields)

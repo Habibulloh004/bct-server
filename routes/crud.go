@@ -299,6 +299,18 @@ func CategoryRoutes(app fiber.Router, db *mongo.Client) {
 
 		total, _ := collection.CountDocuments(context.TODO(), filter)
 
+		// Populate top category name for each category
+		topCategoryCollection := config.GetCollection(db, "topcategories")
+		for i, cat := range categories {
+			if cat.TopCategoryID != nil {
+				var topCat models.TopCategory
+				err := topCategoryCollection.FindOne(context.TODO(), bson.M{"_id": cat.TopCategoryID}).Decode(&topCat)
+				if err == nil {
+					categories[i].TopCategoryName = topCat.Name
+				}
+			}
+		}
+
 		return c.JSON(fiber.Map{
 			"data":  categories,
 			"total": total,
@@ -319,6 +331,16 @@ func CategoryRoutes(app fiber.Router, db *mongo.Client) {
 		err = collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&category)
 		if err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "Category not found"})
+		}
+
+		// Populate top category name
+		if category.TopCategoryID != nil {
+			topCategoryCollection := config.GetCollection(db, "topcategories")
+			var topCat models.TopCategory
+			err := topCategoryCollection.FindOne(context.TODO(), bson.M{"_id": category.TopCategoryID}).Decode(&topCat)
+			if err == nil {
+				category.TopCategoryName = topCat.Name
+			}
 		}
 
 		return c.JSON(category)
