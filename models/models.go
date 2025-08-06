@@ -10,28 +10,34 @@ import (
 type User struct {
 	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
 	Name      string             `json:"name" bson:"name"`
-	Email     string             `json:"email" bson:"email"`
+	Email     string             `json:"email,omitempty" bson:"email,omitempty"`
 	Phone     string             `json:"phone" bson:"phone"`
 	Password  string             `json:"password" bson:"password"`
+	IsActive  bool               `json:"is_active" bson:"is_active"`
+	LastLogin *time.Time         `json:"last_login,omitempty" bson:"last_login,omitempty"`
 	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
 	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
-type LoginRequest struct {
+// Updated login request to use phone instead of email
+type UserLoginRequest struct {
 	Phone    string `json:"phone"`
 	Password string `json:"password"`
 }
 
-type RegisterRequest struct {
+// Updated register request - phone is required, email is optional
+type UserRegisterRequest struct {
 	Name     string `json:"name"`
-	Email    string `json:"email"`
+	Email    string `json:"email,omitempty"`
 	Phone    string `json:"phone"`
 	Password string `json:"password"`
 }
 
-type AuthResponse struct {
-	User User `json:"user"`
+type UserAuthResponse struct {
+	Token string `json:"token"`
+	User  User   `json:"user"`
 }
+
 
 // Client model (from schema diagram)
 type Client struct {
@@ -65,18 +71,23 @@ type Category struct {
 	UpdatedAt     time.Time           `json:"updated_at" bson:"updated_at"`
 }
 
-// Product model (updated)
+// Product model (updated with all required fields)
 type Product struct {
-	ID           primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
-	Name         string              `json:"name" bson:"name"`
-	AdsTitle     string              `json:"ads_title" bson:"ads_title"`
-	Image        []string            `json:"image" bson:"image"`
-	Description  string              `json:"description" bson:"description"`
-	Guarantee    string              `json:"guarantee" bson:"guarantee"`
-	SerialNumber string              `json:"serial_number" bson:"serial_number"`
-	CategoryID   *primitive.ObjectID `json:"category_id" bson:"category_id"`
-	CreatedAt    time.Time           `json:"created_at" bson:"created_at"`
-	UpdatedAt    time.Time           `json:"updated_at" bson:"updated_at"`
+	ID              primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
+	Name            string              `json:"name" bson:"name"`
+	AdsTitle        string              `json:"ads_title" bson:"ads_title"`
+	Image           []string            `json:"image" bson:"image"`
+	Description     string              `json:"description" bson:"description"`
+	Guarantee       string              `json:"guarantee" bson:"guarantee"`
+	SerialNumber    string              `json:"serial_number" bson:"serial_number"`
+	Price           string              `json:"price" bson:"price"`
+	Discount        string              `json:"discount,omitempty" bson:"discount,omitempty"`
+	CategoryID      *primitive.ObjectID `json:"category_id" bson:"category_id"`
+	TopCategoryID   *primitive.ObjectID `json:"top_category_id" bson:"top_category_id"`
+	CategoryName    string              `json:"category_name,omitempty" bson:"category_name,omitempty"`
+	TopCategoryName string              `json:"top_category_name,omitempty" bson:"top_category_name,omitempty"`
+	CreatedAt       time.Time           `json:"created_at" bson:"created_at"`
+	UpdatedAt       time.Time           `json:"updated_at" bson:"updated_at"`
 }
 
 // Order model (from schema diagram)
@@ -200,7 +211,7 @@ type Admin struct {
 type Currency struct {
 	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
 	Sum       string             `json:"sum" bson:"sum"`
-	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
+	CreatedAt time.Time          `json:"created_at" bsom:"created_at"`
 	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
 }
 

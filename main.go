@@ -51,14 +51,18 @@ func main() {
 	api := app.Group("/api")
 
 	// Authentication routes
-	routes.AdminAuthRoutes(api, db)
+	routes.UserAuthRoutes(api, db)  // User authentication (email/password)
+	routes.AdminAuthRoutes(api, db) // Admin authentication
 
-	// Core models CRUD routes (updated models)
-	routes.ClientRoutes(api, db)
+	// User Management routes (Admin only)
+	// routes.UserManagementRoutes(api, db) // Admin can monitor/manage users
+	routes.AdminDashboardRoutes(api, db)
+
+	// Core models CRUD routes
 	routes.TopCategoryRoutes(api, db)
 	routes.CategoryRoutes(api, db)
-	routes.ProductRoutes(api, db)
-	routes.OrderRoutes(api, db)
+	routes.ProductRoutes(api, db) // Updated with category names and price
+	routes.OrderRoutes(api, db)   // Updated to reference users instead of clients
 
 	// Information pages (singleton models)
 	routes.AboutRoutes(api, db)
@@ -68,7 +72,7 @@ func main() {
 	routes.VendorRoutes(api, db)
 	routes.ProjectRoutes(api, db)
 
-	// Existing CRUD routes
+	// Content CRUD routes
 	routes.ReviewRoutes(api, db)
 	routes.SertificateRoutes(api, db)
 	routes.LicenseRoutes(api, db)
@@ -91,14 +95,20 @@ func main() {
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"message": "Fiber E-commerce API",
-			"version": "2.0.0",
+			"version": "2.1.0",
 			"status":  "running",
 			"endpoints": fiber.Map{
-				"health":        "/health",
-				"api":           "/api/*",
-				"uploads":       "/uploads/*",
-				"admin_login":   "/api/admin/login",
-				"documentation": "See README.md for full API documentation",
+				"health":           "/health",
+				"api":              "/api/*",
+				"uploads":          "/uploads/*",
+				"user_register":    "/api/auth/register",
+				"user_login":       "/api/auth/login",
+				"user_profile":     "/api/auth/profile",
+				"my_orders":        "/api/orders/my-orders",
+				"admin_login":      "/api/admin/login",
+				"user_management":  "/api/users (admin only)",
+				"order_management": "/api/orders (admin only)",
+				"documentation":    "See README.md for full API documentation",
 			},
 		})
 	})
@@ -110,6 +120,13 @@ func main() {
 			"message":   "Server is running",
 			"timestamp": time.Now().UTC(),
 			"database":  "connected",
+			"features": fiber.Map{
+				"user_auth":        "enabled",
+				"admin_auth":       "enabled",
+				"user_management":  "enabled (admin only)",
+				"order_management": "enabled",
+				"file_upload":      "enabled",
+			},
 		})
 	})
 
@@ -120,6 +137,14 @@ func main() {
 			"path":    c.Path(),
 			"method":  c.Method(),
 			"message": "Please check the API documentation for available endpoints",
+			"available_endpoints": fiber.Map{
+				"auth":     "/api/auth/*",
+				"admin":    "/api/admin/*",
+				"users":    "/api/users/* (admin only)",
+				"orders":   "/api/orders/*",
+				"products": "/api/products/*",
+				"files":    "/api/files/*",
+			},
 		})
 	})
 
@@ -132,7 +157,13 @@ func main() {
 	log.Printf("🚀 Server starting on port %s", port)
 	log.Printf("📚 API documentation: http://localhost:%s/", port)
 	log.Printf("🔍 Health check: http://localhost:%s/health", port)
+	log.Printf("👤 User registration: http://localhost:%s/api/auth/register", port)
+	log.Printf("👤 User login: http://localhost:%s/api/auth/login", port)
+	log.Printf("👤 User profile: http://localhost:%s/api/auth/profile", port)
+	log.Printf("📦 My orders: http://localhost:%s/api/orders/my-orders", port)
 	log.Printf("🔐 Admin login: http://localhost:%s/api/admin/login", port)
+	log.Printf("👥 User management: http://localhost:%s/api/users (admin only)", port)
+	log.Printf("📋 Order management: http://localhost:%s/api/orders (admin only)", port)
 	log.Printf("📁 File uploads: http://localhost:%s/uploads/", port)
 
 	log.Fatal(app.Listen(":" + port))
