@@ -52,6 +52,7 @@ db.orders.createIndex({ "created_at": -1 });
 db.banners.createIndex({ "top_category_id": 1 });
 db.banners.createIndex({ "category_id": 1 });
 db.banners.createIndex({ "product_id": 1 });
+db.banners.createIndex({ "title": "text", "description": "text" });
 
 // Sort indexes
 db.banner_sorts.createIndex({ "unique_id": 1 });

@@ -219,6 +219,8 @@ type Currency struct {
 type Banner struct {
 	ID            primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
 	Image         string              `json:"image" bson:"image"`
+	Title         string              `json:"title" bson:"title"`
+	Description   string              `json:"description" bson:"description"`
 	TopCategoryID *primitive.ObjectID `json:"top_category_id" bson:"top_category_id"`
 	CategoryID    *primitive.ObjectID `json:"category_id" bson:"category_id"`
 	ProductID     *primitive.ObjectID `json:"product_id" bson:"product_id"`
