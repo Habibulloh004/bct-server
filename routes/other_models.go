@@ -347,5 +347,21 @@ func TopCategorySortRoutes(app fiber.Router, db *mongo.Client) {
 
 // CategorySort CRUD
 func CategorySortRoutes(app fiber.Router, db *mongo.Client) {
-	genericCRUD(app, db, "category-sorts", "category_sorts", models.CategorySort{})
+    genericCRUD(app, db, "category-sorts", "category_sorts", models.CategorySort{})
 }
+
+// Vendors_about CRUD
+func VendorsAboutRoutes(app fiber.Router, db *mongo.Client) {
+    genericCRUD(app, db, "vendors-about", "vendors_about", models.Vendors_about{})
+}
+
+// Experiments CRUD
+func ExperimentsRoutes(app fiber.Router, db *mongo.Client) {
+    genericCRUD(app, db, "experiments", "experiments", models.Experiments{})
+}
+
+// Company_stats CRUD
+func CompanyStatsRoutes(app fiber.Router, db *mongo.Client) {
+    genericCRUD(app, db, "company-stats", "company_stats", models.Company_stats{})
+}
+

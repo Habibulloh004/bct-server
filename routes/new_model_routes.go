@@ -474,3 +474,164 @@ func LinksRoutes(app fiber.Router, db *mongo.Client) {
 		return c.JSON(fiber.Map{"message": "Links information deleted successfully"})
 	})
 }
+
+// Discount (singleton)
+func DiscountRoutes(app fiber.Router, db *mongo.Client) {
+    discount := app.Group("/discount")
+
+    // Get discount info (single record)
+    discount.Get("/", func(c *fiber.Ctx) error {
+        collection := config.GetCollection(db, "discount")
+        var info models.Discount
+        err := collection.FindOne(context.TODO(), bson.M{}).Decode(&info)
+        if err != nil {
+            if err == mongo.ErrNoDocuments {
+                return c.Status(404).JSON(fiber.Map{"error": "Discount information not found"})
+            }
+            return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch discount information"})
+        }
+        return c.JSON(info)
+    })
+
+    // Create discount info
+    discount.Post("/", func(c *fiber.Ctx) error {
+        var info models.Discount
+        if err := c.BodyParser(&info); err != nil {
+            return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+        }
+
+        info.CreatedAt = time.Now()
+        info.UpdatedAt = time.Now()
+        collection := config.GetCollection(db, "discount")
+
+        result, err := collection.InsertOne(context.TODO(), info)
+        if err != nil {
+            return c.Status(500).JSON(fiber.Map{"error": "Failed to create discount information"})
+        }
+
+        info.ID = result.InsertedID.(primitive.ObjectID)
+        return c.Status(201).JSON(info)
+    })
+
+    // Update discount info (single record)
+    discount.Put("/", func(c *fiber.Ctx) error {
+        var updateData bson.M
+        if err := c.BodyParser(&updateData); err != nil {
+            return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+        }
+
+        delete(updateData, "_id")
+        updateData["updated_at"] = time.Now()
+
+        collection := config.GetCollection(db, "discount")
+        update := bson.M{"$set": updateData}
+
+        var info models.Discount
+        err := collection.FindOneAndUpdate(context.TODO(), bson.M{}, update).Decode(&info)
+        if err != nil {
+            if err == mongo.ErrNoDocuments {
+                return c.Status(404).JSON(fiber.Map{"error": "Discount information not found"})
+            }
+            return c.Status(500).JSON(fiber.Map{"error": "Failed to update discount information"})
+        }
+
+        collection.FindOne(context.TODO(), bson.M{"_id": info.ID}).Decode(&info)
+        return c.JSON(info)
+    })
+
+    // Delete discount info
+    discount.Delete("/", func(c *fiber.Ctx) error {
+        collection := config.GetCollection(db, "discount")
+        result, err := collection.DeleteOne(context.TODO(), bson.M{})
+        if err != nil {
+            return c.Status(500).JSON(fiber.Map{"error": "Failed to delete discount information"})
+        }
+
+        if result.DeletedCount == 0 {
+            return c.Status(404).JSON(fiber.Map{"error": "Discount information not found"})
+        }
+
+        return c.JSON(fiber.Map{"message": "Discount information deleted successfully"})
+    })
+}
+
+// Official partner (singleton)
+func OfficialPartnerRoutes(app fiber.Router, db *mongo.Client) {
+    route := app.Group("/official-partner")
+
+    // Get official partner (single record)
+    route.Get("/", func(c *fiber.Ctx) error {
+        collection := config.GetCollection(db, "official_partner")
+        var info models.Official_partner
+        err := collection.FindOne(context.TODO(), bson.M{}).Decode(&info)
+        if err != nil {
+            if err == mongo.ErrNoDocuments {
+                return c.Status(404).JSON(fiber.Map{"error": "Official partner information not found"})
+            }
+            return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch official partner information"})
+        }
+        return c.JSON(info)
+    })
+
+    // Create official partner
+    route.Post("/", func(c *fiber.Ctx) error {
+        var info models.Official_partner
+        if err := c.BodyParser(&info); err != nil {
+            return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+        }
+
+        info.CreatedAt = time.Now()
+        info.UpdatedAt = time.Now()
+        collection := config.GetCollection(db, "official_partner")
+
+        result, err := collection.InsertOne(context.TODO(), info)
+        if err != nil {
+            return c.Status(500).JSON(fiber.Map{"error": "Failed to create official partner information"})
+        }
+
+        info.ID = result.InsertedID.(primitive.ObjectID)
+        return c.Status(201).JSON(info)
+    })
+
+    // Update official partner (single record)
+    route.Put("/", func(c *fiber.Ctx) error {
+        var updateData bson.M
+        if err := c.BodyParser(&updateData); err != nil {
+            return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+        }
+
+        delete(updateData, "_id")
+        updateData["updated_at"] = time.Now()
+
+        collection := config.GetCollection(db, "official_partner")
+        update := bson.M{"$set": updateData}
+
+        var info models.Official_partner
+        err := collection.FindOneAndUpdate(context.TODO(), bson.M{}, update).Decode(&info)
+        if err != nil {
+            if err == mongo.ErrNoDocuments {
+                return c.Status(404).JSON(fiber.Map{"error": "Official partner information not found"})
+            }
+            return c.Status(500).JSON(fiber.Map{"error": "Failed to update official partner information"})
+        }
+
+        collection.FindOne(context.TODO(), bson.M{"_id": info.ID}).Decode(&info)
+        return c.JSON(info)
+    })
+
+    // Delete official partner
+    route.Delete("/", func(c *fiber.Ctx) error {
+        collection := config.GetCollection(db, "official_partner")
+        result, err := collection.DeleteOne(context.TODO(), bson.M{})
+        if err != nil {
+            return c.Status(500).JSON(fiber.Map{"error": "Failed to delete official partner information"})
+        }
+
+        if result.DeletedCount == 0 {
+            return c.Status(404).JSON(fiber.Map{"error": "Official partner information not found"})
+        }
+
+        return c.JSON(fiber.Map{"message": "Official partner information deleted successfully"})
+    })
+}
+

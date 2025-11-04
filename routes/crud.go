@@ -427,19 +427,31 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 	products.Get("/", func(c *fiber.Ctx) error {
 		collection := config.GetCollection(db, "products")
 
-		page, _ := strconv.Atoi(c.Query("page", "1"))
-		limit, _ := strconv.Atoi(c.Query("limit", "10"))
+		page := 1
+		if p, err := strconv.Atoi(c.Query("page")); err == nil && p > 0 {
+			page = p
+		}
+
+		limit := 10
+		if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 {
+			limit = l
+		}
 		skip := (page - 1) * limit
 
 		filter := bson.M{}
 		if categoryID := c.Query("category_id"); categoryID != "" {
 			if id, err := primitive.ObjectIDFromHex(categoryID); err == nil {
 				filter["category_id"] = id
+			} else {
+				// Fallback to plain string match when the ID isn't ObjectID
+				filter["category_id"] = categoryID
 			}
 		}
 		if topCategoryID := c.Query("top_category_id"); topCategoryID != "" {
 			if id, err := primitive.ObjectIDFromHex(topCategoryID); err == nil {
 				filter["top_category_id"] = id
+			} else {
+				filter["top_category_id"] = topCategoryID
 			}
 		}
 
@@ -550,6 +562,7 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 		if categoryIDInterface, exists := updateData["category_id"]; exists {
 			if categoryIDStr, ok := categoryIDInterface.(string); ok {
 				if categoryID, err := primitive.ObjectIDFromHex(categoryIDStr); err == nil {
+					updateData["category_id"] = categoryID
 					categoryCollection := config.GetCollection(db, "categories")
 					var category models.Category
 					err := categoryCollection.FindOne(context.TODO(), bson.M{"_id": categoryID}).Decode(&category)

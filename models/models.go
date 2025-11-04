@@ -82,6 +82,8 @@ type Product struct {
 	SerialNumber    string              `json:"serial_number" bson:"serial_number"`
 	Price           string              `json:"price" bson:"price"`
 	Discount        string              `json:"discount,omitempty" bson:"discount,omitempty"`
+	Active          bool                `json:"active" bson:"active"`
+	Index           int                 `json:"index" bson:"index"`
 	CategoryID      *primitive.ObjectID `json:"category_id" bson:"category_id"`
 	TopCategoryID   *primitive.ObjectID `json:"top_category_id" bson:"top_category_id"`
 	CategoryName    string              `json:"category_name,omitempty" bson:"category_name,omitempty"`
@@ -219,6 +221,8 @@ type Currency struct {
 type Banner struct {
 	ID            primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
 	Image         string              `json:"image" bson:"image"`
+	Title         string              `json:"title" bson:"title"`
+	Description   string              `json:"description" bson:"description"`
 	TopCategoryID *primitive.ObjectID `json:"top_category_id" bson:"top_category_id"`
 	CategoryID    *primitive.ObjectID `json:"category_id" bson:"category_id"`
 	ProductID     *primitive.ObjectID `json:"product_id" bson:"product_id"`
@@ -302,7 +306,58 @@ type CategorySort struct {
 
 // File upload response
 type FileUploadResponse struct {
-	URL      string `json:"url"`
-	Filename string `json:"filename"`
-	Size     int64  `json:"size"`
+    URL      string `json:"url"`
+    Filename string `json:"filename"`
+    Size     int64  `json:"size"`
 }
+
+// Discount model (singleton)
+type Discount struct {
+    ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+    Title     string             `json:"title" bson:"title"`
+    ProductID string             `json:"product_id" bson:"product_id"`
+    CreatedAt time.Time          `json:"created_at" bson:"created_at"`
+    UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+}
+
+// Vendors_about model
+type Vendors_about struct {
+    ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+    Name        string             `json:"name" bson:"name"`
+    Description string             `json:"description" bson:"description"`
+    Image       string             `json:"image" bson:"image"`
+    CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
+    UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
+}
+
+// Official_partner model (singleton)
+type Official_partner struct {
+    ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+    Name        string             `json:"name" bson:"name"`
+    Image       string             `json:"image" bson:"image"`
+    Description string             `json:"description" bson:"description"`
+    CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
+    UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
+}
+
+// Experiments model
+type Experiments struct {
+    ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+    Count       string             `json:"count" bson:"count"`
+    Title       string             `json:"title" bson:"title"`
+    Description string             `json:"description" bson:"description"`
+    CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
+    UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
+}
+
+// Company_stats model
+type Company_stats struct {
+    ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+    Count       string             `json:"count" bson:"count"`
+    Title       string             `json:"title" bson:"title"`
+    Description string             `json:"description" bson:"description"`
+    Image       string             `json:"image" bson:"image"`
+    CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
+    UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
+}
+

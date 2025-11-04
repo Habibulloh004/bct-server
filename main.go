@@ -37,11 +37,13 @@ func main() {
 	// Middleware
 	app.Use(recover.New())
 	app.Use(logger.New())
+	// Updated CORS middleware configuration
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "*",
-		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
-		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
+		AllowOrigins:     "http://localhost:5173,https://bct-erp-nine.vercel.app,https://bct-admin-eight.vercel.app",
+		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS,HEAD",
+		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,Access-Control-Allow-Origin,Access-Control-Allow-Headers,Access-Control-Allow-Methods,Access-Control-Allow-Credentials,X-Requested-With",
 		AllowCredentials: true,
+		ExposeHeaders:    "Content-Length,Access-Control-Allow-Origin,Access-Control-Allow-Headers,Cache-Control,Content-Language,Content-Type",
 	}))
 
 	// Static files for uploads
@@ -67,10 +69,15 @@ func main() {
 	// Information pages (singleton models)
 	routes.AboutRoutes(api, db)
 	routes.LinksRoutes(api, db)
+	routes.DiscountRoutes(api, db)
+	routes.OfficialPartnerRoutes(api, db)
 
 	// Media/Content routes
 	routes.VendorRoutes(api, db)
 	routes.ProjectRoutes(api, db)
+	routes.VendorsAboutRoutes(api, db)
+	routes.ExperimentsRoutes(api, db)
+	routes.CompanyStatsRoutes(api, db)
 
 	// Content CRUD routes
 	routes.ReviewRoutes(api, db)
@@ -168,3 +175,4 @@ func main() {
 
 	log.Fatal(app.Listen(":" + port))
 }
+
