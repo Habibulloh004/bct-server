@@ -13,8 +13,676 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"golang.org/x/crypto/bcrypt"
 )
+
+// Company CRUD
+func CompanyRoutes(app fiber.Router, db *mongo.Client) {
+	companies := app.Group("/companies")
+
+	companies.Get("/", func(c *fiber.Ctx) error {
+		collection := config.GetCollection(db, "companies")
+
+		page, _ := strconv.Atoi(c.Query("page", "1"))
+		limit, _ := strconv.Atoi(c.Query("limit", "10"))
+		if limit <= 0 {
+			limit = 10
+		}
+		if page <= 0 {
+			page = 1
+		}
+		skip := (page - 1) * limit
+
+		opts := options.Find().SetSkip(int64(skip)).SetLimit(int64(limit)).SetSort(bson.D{{Key: "created_at", Value: -1}})
+
+		cursor, err := collection.Find(context.TODO(), bson.M{}, opts)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch companies"})
+		}
+		defer cursor.Close(context.TODO())
+
+		var companies []models.Company
+		if err = cursor.All(context.TODO(), &companies); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to decode companies"})
+		}
+
+		for i := range companies {
+			if companies[i].OrderHistory == nil {
+				companies[i].OrderHistory = []models.OrderHistoryEntry{}
+			}
+		}
+
+		total, _ := collection.CountDocuments(context.TODO(), bson.M{})
+
+		return c.JSON(fiber.Map{
+			"data":  companies,
+			"total": total,
+			"page":  page,
+			"limit": limit,
+		})
+	})
+
+	companies.Get("/:id", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		collection := config.GetCollection(db, "companies")
+		var company models.Company
+		err = collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&company)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Company not found"})
+		}
+
+		if company.OrderHistory == nil {
+			company.OrderHistory = []models.OrderHistoryEntry{}
+		}
+
+		return c.JSON(company)
+	})
+
+	type companyPayload struct {
+		Name    string  `json:"name"`
+		Email   string  `json:"email"`
+		Inn     string  `json:"inn"`
+		Address string  `json:"address"`
+		Phone   string  `json:"phone"`
+		Comment *string `json:"comment"`
+	}
+
+	companies.Post("/", func(c *fiber.Ctx) error {
+		var payload companyPayload
+		if err := c.BodyParser(&payload); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+
+		if payload.Name == "" || payload.Email == "" || payload.Inn == "" || payload.Address == "" || payload.Phone == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "Name, email, inn, address and phone are required"})
+		}
+
+		now := time.Now()
+		company := models.Company{
+			Name:         payload.Name,
+			OrderCount:   0,
+			TotalAmount:  models.NewFlexFloat64(0),
+			Email:        payload.Email,
+			Inn:          payload.Inn,
+			Address:      payload.Address,
+			Phone:        payload.Phone,
+			Comment:      payload.Comment,
+			OrderHistory: []models.OrderHistoryEntry{},
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		}
+
+		collection := config.GetCollection(db, "companies")
+		result, err := collection.InsertOne(context.TODO(), company)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to create company"})
+		}
+
+		company.ID = result.InsertedID.(primitive.ObjectID)
+		return c.Status(201).JSON(company)
+	})
+
+	companies.Put("/:id", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		var updateData bson.M
+		if err := c.BodyParser(&updateData); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+
+		delete(updateData, "_id")
+		delete(updateData, "created_at")
+
+		if orderCount, ok := updateData["order_count"]; ok {
+			if v, valid := toInt(orderCount); valid {
+				updateData["order_count"] = v
+			} else {
+				delete(updateData, "order_count")
+			}
+		}
+		if totalAmount, ok := updateData["total_amount"]; ok {
+			if v, valid := toFloat64(totalAmount); valid {
+				updateData["total_amount"] = v
+			} else {
+				delete(updateData, "total_amount")
+			}
+		}
+
+		updateData["updated_at"] = time.Now()
+
+		collection := config.GetCollection(db, "companies")
+		update := bson.M{"$set": updateData}
+
+		result, err := collection.UpdateOne(context.TODO(), bson.M{"_id": id}, update)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to update company"})
+		}
+
+		if result.MatchedCount == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "Company not found"})
+		}
+
+		var company models.Company
+		collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&company)
+		if company.OrderHistory == nil {
+			company.OrderHistory = []models.OrderHistoryEntry{}
+		}
+
+		return c.JSON(company)
+	})
+
+	companies.Delete("/:id", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		collection := config.GetCollection(db, "companies")
+		result, err := collection.DeleteOne(context.TODO(), bson.M{"_id": id})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to delete company"})
+		}
+
+		if result.DeletedCount == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "Company not found"})
+		}
+
+		return c.JSON(fiber.Map{"message": "Company deleted successfully"})
+	})
+}
+
+// Funnel CRUD
+func FunnelRoutes(app fiber.Router, db *mongo.Client) {
+	funnels := app.Group("/funnels")
+
+	funnels.Get("/", func(c *fiber.Ctx) error {
+		collection := config.GetCollection(db, "funnels")
+
+		opts := options.Find().SetSort(bson.D{{Key: "order", Value: 1}})
+
+		cursor, err := collection.Find(context.TODO(), bson.M{}, opts)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch funnels"})
+		}
+		defer cursor.Close(context.TODO())
+
+		var funnelsList []models.Funnel
+		if err = cursor.All(context.TODO(), &funnelsList); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to decode funnels"})
+		}
+
+		return c.JSON(funnelsList)
+	})
+
+	funnels.Get("/:id", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		collection := config.GetCollection(db, "funnels")
+		var funnel models.Funnel
+		err = collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&funnel)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Funnel stage not found"})
+		}
+
+		return c.JSON(funnel)
+	})
+
+	type funnelPayload struct {
+		Name    string `json:"name"`
+		Color   string `json:"color"`
+		Comment string `json:"comment"`
+		Order   *int   `json:"order"`
+	}
+
+	funnels.Post("/", func(c *fiber.Ctx) error {
+		var payload funnelPayload
+		if err := c.BodyParser(&payload); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+
+		if payload.Name == "" || payload.Color == "" || payload.Order == nil {
+			return c.Status(400).JSON(fiber.Map{"error": "name, color and order are required"})
+		}
+
+		now := time.Now()
+		funnel := models.Funnel{
+			Name:      payload.Name,
+			Color:     payload.Color,
+			Comment:   payload.Comment,
+			Order:     *payload.Order,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+
+		collection := config.GetCollection(db, "funnels")
+		result, err := collection.InsertOne(context.TODO(), funnel)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to create funnel stage"})
+		}
+
+		funnel.ID = result.InsertedID.(primitive.ObjectID)
+		return c.Status(201).JSON(funnel)
+	})
+
+	funnels.Put("/:id", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		var updateData bson.M
+		if err := c.BodyParser(&updateData); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+
+		delete(updateData, "_id")
+		delete(updateData, "created_at")
+
+		if orderVal, ok := updateData["order"]; ok {
+			if v, valid := toInt(orderVal); valid {
+				updateData["order"] = v
+			} else {
+				return c.Status(400).JSON(fiber.Map{"error": "order must be a number"})
+			}
+		}
+
+		updateData["updated_at"] = time.Now()
+
+		collection := config.GetCollection(db, "funnels")
+		result, err := collection.UpdateOne(context.TODO(), bson.M{"_id": id}, bson.M{"$set": updateData})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to update funnel stage"})
+		}
+
+		if result.MatchedCount == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "Funnel stage not found"})
+		}
+
+		var funnel models.Funnel
+		collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&funnel)
+		return c.JSON(funnel)
+	})
+
+	funnels.Delete("/:id", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		collection := config.GetCollection(db, "funnels")
+		result, err := collection.DeleteOne(context.TODO(), bson.M{"_id": id})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to delete funnel stage"})
+		}
+
+		if result.DeletedCount == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "Funnel stage not found"})
+		}
+
+		return c.JSON(fiber.Map{"message": "Funnel stage deleted successfully"})
+	})
+}
+
+// Counterparty CRUD
+func CounterpartyRoutes(app fiber.Router, db *mongo.Client) {
+	counterparties := app.Group("/counterparties")
+
+	counterparties.Get("/", func(c *fiber.Ctx) error {
+		collection := config.GetCollection(db, "counterparties")
+
+		page, _ := strconv.Atoi(c.Query("page", "1"))
+		limit, _ := strconv.Atoi(c.Query("limit", "10"))
+		if limit <= 0 {
+			limit = 10
+		}
+		if page <= 0 {
+			page = 1
+		}
+		skip := (page - 1) * limit
+
+		opts := options.Find().SetSkip(int64(skip)).SetLimit(int64(limit)).SetSort(bson.D{{Key: "created_at", Value: -1}})
+
+		cursor, err := collection.Find(context.TODO(), bson.M{}, opts)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch counterparties"})
+		}
+		defer cursor.Close(context.TODO())
+
+		var counterparties []models.Counterparty
+		if err = cursor.All(context.TODO(), &counterparties); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to decode counterparties"})
+		}
+
+		for i := range counterparties {
+			if counterparties[i].OrderHistory == nil {
+				counterparties[i].OrderHistory = []models.OrderHistoryEntry{}
+			}
+		}
+
+		total, _ := collection.CountDocuments(context.TODO(), bson.M{})
+
+		return c.JSON(fiber.Map{
+			"data":  counterparties,
+			"total": total,
+			"page":  page,
+			"limit": limit,
+		})
+	})
+
+	counterparties.Get("/:id", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		collection := config.GetCollection(db, "counterparties")
+		var counterparty models.Counterparty
+		err = collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&counterparty)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Counterparty not found"})
+		}
+
+		if counterparty.OrderHistory == nil {
+			counterparty.OrderHistory = []models.OrderHistoryEntry{}
+		}
+
+		return c.JSON(counterparty)
+	})
+
+	type counterpartyPayload struct {
+		FirstName    string  `json:"first_name"`
+		LastName     string  `json:"last_name"`
+		Email        string  `json:"email"`
+		Phone        string  `json:"phone"`
+		CompanyPhone string  `json:"company_phone"`
+		Company      string  `json:"company"`
+		Address      string  `json:"address"`
+		Comment      *string `json:"comment"`
+	}
+
+	counterparties.Post("/", func(c *fiber.Ctx) error {
+		var payload counterpartyPayload
+		if err := c.BodyParser(&payload); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+
+		if payload.FirstName == "" || payload.LastName == "" || payload.Email == "" || payload.Phone == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "First name, last name, email and phone are required"})
+		}
+
+		now := time.Now()
+		counterparty := models.Counterparty{
+			FirstName:    payload.FirstName,
+			LastName:     payload.LastName,
+			Email:        payload.Email,
+			Phone:        payload.Phone,
+			CompanyPhone: payload.CompanyPhone,
+			Company:      payload.Company,
+			Address:      payload.Address,
+			Comment:      payload.Comment,
+			OrderHistory: []models.OrderHistoryEntry{},
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		}
+
+		collection := config.GetCollection(db, "counterparties")
+		result, err := collection.InsertOne(context.TODO(), counterparty)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to create counterparty"})
+		}
+
+		counterparty.ID = result.InsertedID.(primitive.ObjectID)
+		return c.Status(201).JSON(counterparty)
+	})
+
+	counterparties.Put("/:id", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		var updateData bson.M
+		if err := c.BodyParser(&updateData); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+
+		delete(updateData, "_id")
+		delete(updateData, "created_at")
+		updateData["updated_at"] = time.Now()
+
+		collection := config.GetCollection(db, "counterparties")
+		update := bson.M{"$set": updateData}
+
+		result, err := collection.UpdateOne(context.TODO(), bson.M{"_id": id}, update)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to update counterparty"})
+		}
+
+		if result.MatchedCount == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "Counterparty not found"})
+		}
+
+		var counterparty models.Counterparty
+		collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&counterparty)
+		if counterparty.OrderHistory == nil {
+			counterparty.OrderHistory = []models.OrderHistoryEntry{}
+		}
+		return c.JSON(counterparty)
+	})
+
+	counterparties.Delete("/:id", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		collection := config.GetCollection(db, "counterparties")
+		result, err := collection.DeleteOne(context.TODO(), bson.M{"_id": id})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to delete counterparty"})
+		}
+
+		if result.DeletedCount == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "Counterparty not found"})
+		}
+
+		return c.JSON(fiber.Map{"message": "Counterparty deleted successfully"})
+	})
+}
+
+// Contract CRUD
+func ContractRoutes(app fiber.Router, db *mongo.Client) {
+	contracts := app.Group("/contracts")
+
+	contracts.Get("/", func(c *fiber.Ctx) error {
+		collection := config.GetCollection(db, "contracts")
+
+		page, _ := strconv.Atoi(c.Query("page", "1"))
+		limit, _ := strconv.Atoi(c.Query("limit", "10"))
+		if limit <= 0 {
+			limit = 10
+		}
+		if page <= 0 {
+			page = 1
+		}
+		skip := (page - 1) * limit
+
+		filter := bson.M{}
+		if clientID := c.Query("client_id"); clientID != "" {
+			if id, err := primitive.ObjectIDFromHex(clientID); err == nil {
+				filter["client_id"] = id
+			}
+		}
+		if companyID := c.Query("company_id"); companyID != "" {
+			if id, err := primitive.ObjectIDFromHex(companyID); err == nil {
+				filter["company_id"] = id
+			}
+		}
+
+		opts := options.Find().SetSkip(int64(skip)).SetLimit(int64(limit)).SetSort(bson.D{{Key: "created_at", Value: -1}})
+
+		cursor, err := collection.Find(context.TODO(), filter, opts)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch contracts"})
+		}
+		defer cursor.Close(context.TODO())
+
+		var contractsList []models.Contract
+		if err = cursor.All(context.TODO(), &contractsList); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to decode contracts"})
+		}
+
+		for i := range contractsList {
+			if contractsList[i].Products == nil {
+				contractsList[i].Products = []models.ContractProduct{}
+			}
+		}
+
+		total, _ := collection.CountDocuments(context.TODO(), filter)
+
+		return c.JSON(fiber.Map{
+			"data":  contractsList,
+			"total": total,
+			"page":  page,
+			"limit": limit,
+		})
+	})
+
+	contracts.Get("/:id", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		collection := config.GetCollection(db, "contracts")
+		var contract models.Contract
+		err = collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&contract)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Contract not found"})
+		}
+
+		if contract.Products == nil {
+			contract.Products = []models.ContractProduct{}
+		}
+
+		return c.JSON(contract)
+	})
+
+	contracts.Post("/", func(c *fiber.Ctx) error {
+		var contract models.Contract
+		if err := c.BodyParser(&contract); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+
+		if contract.ClientID.IsZero() || contract.CounterpartyID.IsZero() || contract.CompanyID.IsZero() {
+			return c.Status(400).JSON(fiber.Map{"error": "client_id, counterparty_id and company_id are required"})
+		}
+
+		if normalized, ok := normalizeCurrency(contract.ContractCurrency); ok {
+			contract.ContractCurrency = normalized
+		} else {
+			return c.Status(400).JSON(fiber.Map{"error": "contract_currency must be one of UZS, USD, EUR"})
+		}
+
+		if contract.DealDate.IsZero() {
+			return c.Status(400).JSON(fiber.Map{"error": "deal_date is required"})
+		}
+
+		now := time.Now()
+		if contract.Products == nil {
+			contract.Products = []models.ContractProduct{}
+		}
+
+		contract.CreatedAt = now
+		contract.UpdatedAt = now
+
+		collection := config.GetCollection(db, "contracts")
+		result, err := collection.InsertOne(context.TODO(), contract)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to create contract"})
+		}
+
+		contract.ID = result.InsertedID.(primitive.ObjectID)
+		return c.Status(201).JSON(contract)
+	})
+
+	contracts.Put("/:id", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		collection := config.GetCollection(db, "contracts")
+
+		var existing models.Contract
+		err = collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&existing)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Contract not found"})
+		}
+
+		var payload models.Contract
+		if err := c.BodyParser(&payload); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+
+		if payload.ClientID.IsZero() || payload.CounterpartyID.IsZero() || payload.CompanyID.IsZero() {
+			return c.Status(400).JSON(fiber.Map{"error": "client_id, counterparty_id and company_id are required"})
+		}
+
+		if normalized, ok := normalizeCurrency(payload.ContractCurrency); ok {
+			payload.ContractCurrency = normalized
+		} else {
+			return c.Status(400).JSON(fiber.Map{"error": "contract_currency must be one of UZS, USD, EUR"})
+		}
+
+		if payload.DealDate.IsZero() {
+			return c.Status(400).JSON(fiber.Map{"error": "deal_date is required"})
+		}
+
+		if payload.Products == nil {
+			payload.Products = []models.ContractProduct{}
+		}
+
+		payload.ID = id
+		payload.CreatedAt = existing.CreatedAt
+		payload.UpdatedAt = time.Now()
+
+		_, err = collection.ReplaceOne(context.TODO(), bson.M{"_id": id}, payload)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to update contract"})
+		}
+
+		return c.JSON(payload)
+	})
+
+	contracts.Delete("/:id", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		collection := config.GetCollection(db, "contracts")
+		result, err := collection.DeleteOne(context.TODO(), bson.M{"_id": id})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to delete contract"})
+		}
+
+		if result.DeletedCount == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "Contract not found"})
+		}
+
+		return c.JSON(fiber.Map{"message": "Contract deleted successfully"})
+	})
+}
 
 // Client CRUD
 func ClientRoutes(app fiber.Router, db *mongo.Client) {
@@ -41,9 +709,10 @@ func ClientRoutes(app fiber.Router, db *mongo.Client) {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to decode clients"})
 		}
 
-		// Remove passwords from response
 		for i := range clients {
-			clients[i].Password = ""
+			if clients[i].OrderHistory == nil {
+				clients[i].OrderHistory = []models.OrderHistoryEntry{}
+			}
 		}
 
 		total, _ := collection.CountDocuments(context.TODO(), bson.M{})
@@ -70,28 +739,50 @@ func ClientRoutes(app fiber.Router, db *mongo.Client) {
 			return c.Status(404).JSON(fiber.Map{"error": "Client not found"})
 		}
 
-		client.Password = "" // Don't return password
+		if client.OrderHistory == nil {
+			client.OrderHistory = []models.OrderHistoryEntry{}
+		}
+
 		return c.JSON(client)
 	})
 
+	type clientPayload struct {
+		FirstName    string  `json:"first_name"`
+		LastName     string  `json:"last_name"`
+		Email        string  `json:"email"`
+		Phone        string  `json:"phone"`
+		CompanyPhone string  `json:"company_phone"`
+		Company      string  `json:"company"`
+		Address      string  `json:"address"`
+		Comment      *string `json:"comment"`
+	}
+
 	// Create client
 	clients.Post("/", func(c *fiber.Ctx) error {
-		var client models.Client
-		if err := c.BodyParser(&client); err != nil {
+		var payload clientPayload
+		if err := c.BodyParser(&payload); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 		}
 
-		// Hash password if provided
-		if client.Password != "" {
-			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(client.Password), bcrypt.DefaultCost)
-			if err != nil {
-				return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
-			}
-			client.Password = string(hashedPassword)
+		if payload.FirstName == "" || payload.LastName == "" || payload.Email == "" || payload.Phone == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "First name, last name, email and phone are required"})
 		}
 
-		client.CreatedAt = time.Now()
-		client.UpdatedAt = time.Now()
+		now := time.Now()
+		client := models.Client{
+			FirstName:    payload.FirstName,
+			LastName:     payload.LastName,
+			Email:        payload.Email,
+			Phone:        payload.Phone,
+			CompanyPhone: payload.CompanyPhone,
+			Company:      payload.Company,
+			Address:      payload.Address,
+			Comment:      payload.Comment,
+			OrderHistory: []models.OrderHistoryEntry{},
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		}
+
 		collection := config.GetCollection(db, "clients")
 
 		result, err := collection.InsertOne(context.TODO(), client)
@@ -100,7 +791,6 @@ func ClientRoutes(app fiber.Router, db *mongo.Client) {
 		}
 
 		client.ID = result.InsertedID.(primitive.ObjectID)
-		client.Password = "" // Don't return password
 		return c.Status(201).JSON(client)
 	})
 
@@ -116,16 +806,8 @@ func ClientRoutes(app fiber.Router, db *mongo.Client) {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 		}
 
-		// Hash password if provided
-		if password, exists := updateData["password"]; exists && password != "" {
-			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password.(string)), bcrypt.DefaultCost)
-			if err != nil {
-				return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
-			}
-			updateData["password"] = string(hashedPassword)
-		}
-
 		delete(updateData, "_id")
+		delete(updateData, "created_at")
 		updateData["updated_at"] = time.Now()
 
 		collection := config.GetCollection(db, "clients")
@@ -142,7 +824,9 @@ func ClientRoutes(app fiber.Router, db *mongo.Client) {
 
 		var client models.Client
 		collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&client)
-		client.Password = "" // Don't return password
+		if client.OrderHistory == nil {
+			client.OrderHistory = []models.OrderHistoryEntry{}
+		}
 		return c.JSON(client)
 	})
 
@@ -477,161 +1161,160 @@ func LinksRoutes(app fiber.Router, db *mongo.Client) {
 
 // Discount (singleton)
 func DiscountRoutes(app fiber.Router, db *mongo.Client) {
-    discount := app.Group("/discount")
+	discount := app.Group("/discount")
 
-    // Get discount info (single record)
-    discount.Get("/", func(c *fiber.Ctx) error {
-        collection := config.GetCollection(db, "discount")
-        var info models.Discount
-        err := collection.FindOne(context.TODO(), bson.M{}).Decode(&info)
-        if err != nil {
-            if err == mongo.ErrNoDocuments {
-                return c.Status(404).JSON(fiber.Map{"error": "Discount information not found"})
-            }
-            return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch discount information"})
-        }
-        return c.JSON(info)
-    })
+	// Get discount info (single record)
+	discount.Get("/", func(c *fiber.Ctx) error {
+		collection := config.GetCollection(db, "discount")
+		var info models.Discount
+		err := collection.FindOne(context.TODO(), bson.M{}).Decode(&info)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				return c.Status(404).JSON(fiber.Map{"error": "Discount information not found"})
+			}
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch discount information"})
+		}
+		return c.JSON(info)
+	})
 
-    // Create discount info
-    discount.Post("/", func(c *fiber.Ctx) error {
-        var info models.Discount
-        if err := c.BodyParser(&info); err != nil {
-            return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
-        }
+	// Create discount info
+	discount.Post("/", func(c *fiber.Ctx) error {
+		var info models.Discount
+		if err := c.BodyParser(&info); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
 
-        info.CreatedAt = time.Now()
-        info.UpdatedAt = time.Now()
-        collection := config.GetCollection(db, "discount")
+		info.CreatedAt = time.Now()
+		info.UpdatedAt = time.Now()
+		collection := config.GetCollection(db, "discount")
 
-        result, err := collection.InsertOne(context.TODO(), info)
-        if err != nil {
-            return c.Status(500).JSON(fiber.Map{"error": "Failed to create discount information"})
-        }
+		result, err := collection.InsertOne(context.TODO(), info)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to create discount information"})
+		}
 
-        info.ID = result.InsertedID.(primitive.ObjectID)
-        return c.Status(201).JSON(info)
-    })
+		info.ID = result.InsertedID.(primitive.ObjectID)
+		return c.Status(201).JSON(info)
+	})
 
-    // Update discount info (single record)
-    discount.Put("/", func(c *fiber.Ctx) error {
-        var updateData bson.M
-        if err := c.BodyParser(&updateData); err != nil {
-            return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
-        }
+	// Update discount info (single record)
+	discount.Put("/", func(c *fiber.Ctx) error {
+		var updateData bson.M
+		if err := c.BodyParser(&updateData); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
 
-        delete(updateData, "_id")
-        updateData["updated_at"] = time.Now()
+		delete(updateData, "_id")
+		updateData["updated_at"] = time.Now()
 
-        collection := config.GetCollection(db, "discount")
-        update := bson.M{"$set": updateData}
+		collection := config.GetCollection(db, "discount")
+		update := bson.M{"$set": updateData}
 
-        var info models.Discount
-        err := collection.FindOneAndUpdate(context.TODO(), bson.M{}, update).Decode(&info)
-        if err != nil {
-            if err == mongo.ErrNoDocuments {
-                return c.Status(404).JSON(fiber.Map{"error": "Discount information not found"})
-            }
-            return c.Status(500).JSON(fiber.Map{"error": "Failed to update discount information"})
-        }
+		var info models.Discount
+		err := collection.FindOneAndUpdate(context.TODO(), bson.M{}, update).Decode(&info)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				return c.Status(404).JSON(fiber.Map{"error": "Discount information not found"})
+			}
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to update discount information"})
+		}
 
-        collection.FindOne(context.TODO(), bson.M{"_id": info.ID}).Decode(&info)
-        return c.JSON(info)
-    })
+		collection.FindOne(context.TODO(), bson.M{"_id": info.ID}).Decode(&info)
+		return c.JSON(info)
+	})
 
-    // Delete discount info
-    discount.Delete("/", func(c *fiber.Ctx) error {
-        collection := config.GetCollection(db, "discount")
-        result, err := collection.DeleteOne(context.TODO(), bson.M{})
-        if err != nil {
-            return c.Status(500).JSON(fiber.Map{"error": "Failed to delete discount information"})
-        }
+	// Delete discount info
+	discount.Delete("/", func(c *fiber.Ctx) error {
+		collection := config.GetCollection(db, "discount")
+		result, err := collection.DeleteOne(context.TODO(), bson.M{})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to delete discount information"})
+		}
 
-        if result.DeletedCount == 0 {
-            return c.Status(404).JSON(fiber.Map{"error": "Discount information not found"})
-        }
+		if result.DeletedCount == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "Discount information not found"})
+		}
 
-        return c.JSON(fiber.Map{"message": "Discount information deleted successfully"})
-    })
+		return c.JSON(fiber.Map{"message": "Discount information deleted successfully"})
+	})
 }
 
 // Official partner (singleton)
 func OfficialPartnerRoutes(app fiber.Router, db *mongo.Client) {
-    route := app.Group("/official-partner")
+	route := app.Group("/official-partner")
 
-    // Get official partner (single record)
-    route.Get("/", func(c *fiber.Ctx) error {
-        collection := config.GetCollection(db, "official_partner")
-        var info models.Official_partner
-        err := collection.FindOne(context.TODO(), bson.M{}).Decode(&info)
-        if err != nil {
-            if err == mongo.ErrNoDocuments {
-                return c.Status(404).JSON(fiber.Map{"error": "Official partner information not found"})
-            }
-            return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch official partner information"})
-        }
-        return c.JSON(info)
-    })
+	// Get official partner (single record)
+	route.Get("/", func(c *fiber.Ctx) error {
+		collection := config.GetCollection(db, "official_partner")
+		var info models.Official_partner
+		err := collection.FindOne(context.TODO(), bson.M{}).Decode(&info)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				return c.Status(404).JSON(fiber.Map{"error": "Official partner information not found"})
+			}
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch official partner information"})
+		}
+		return c.JSON(info)
+	})
 
-    // Create official partner
-    route.Post("/", func(c *fiber.Ctx) error {
-        var info models.Official_partner
-        if err := c.BodyParser(&info); err != nil {
-            return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
-        }
+	// Create official partner
+	route.Post("/", func(c *fiber.Ctx) error {
+		var info models.Official_partner
+		if err := c.BodyParser(&info); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
 
-        info.CreatedAt = time.Now()
-        info.UpdatedAt = time.Now()
-        collection := config.GetCollection(db, "official_partner")
+		info.CreatedAt = time.Now()
+		info.UpdatedAt = time.Now()
+		collection := config.GetCollection(db, "official_partner")
 
-        result, err := collection.InsertOne(context.TODO(), info)
-        if err != nil {
-            return c.Status(500).JSON(fiber.Map{"error": "Failed to create official partner information"})
-        }
+		result, err := collection.InsertOne(context.TODO(), info)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to create official partner information"})
+		}
 
-        info.ID = result.InsertedID.(primitive.ObjectID)
-        return c.Status(201).JSON(info)
-    })
+		info.ID = result.InsertedID.(primitive.ObjectID)
+		return c.Status(201).JSON(info)
+	})
 
-    // Update official partner (single record)
-    route.Put("/", func(c *fiber.Ctx) error {
-        var updateData bson.M
-        if err := c.BodyParser(&updateData); err != nil {
-            return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
-        }
+	// Update official partner (single record)
+	route.Put("/", func(c *fiber.Ctx) error {
+		var updateData bson.M
+		if err := c.BodyParser(&updateData); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
 
-        delete(updateData, "_id")
-        updateData["updated_at"] = time.Now()
+		delete(updateData, "_id")
+		updateData["updated_at"] = time.Now()
 
-        collection := config.GetCollection(db, "official_partner")
-        update := bson.M{"$set": updateData}
+		collection := config.GetCollection(db, "official_partner")
+		update := bson.M{"$set": updateData}
 
-        var info models.Official_partner
-        err := collection.FindOneAndUpdate(context.TODO(), bson.M{}, update).Decode(&info)
-        if err != nil {
-            if err == mongo.ErrNoDocuments {
-                return c.Status(404).JSON(fiber.Map{"error": "Official partner information not found"})
-            }
-            return c.Status(500).JSON(fiber.Map{"error": "Failed to update official partner information"})
-        }
+		var info models.Official_partner
+		err := collection.FindOneAndUpdate(context.TODO(), bson.M{}, update).Decode(&info)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				return c.Status(404).JSON(fiber.Map{"error": "Official partner information not found"})
+			}
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to update official partner information"})
+		}
 
-        collection.FindOne(context.TODO(), bson.M{"_id": info.ID}).Decode(&info)
-        return c.JSON(info)
-    })
+		collection.FindOne(context.TODO(), bson.M{"_id": info.ID}).Decode(&info)
+		return c.JSON(info)
+	})
 
-    // Delete official partner
-    route.Delete("/", func(c *fiber.Ctx) error {
-        collection := config.GetCollection(db, "official_partner")
-        result, err := collection.DeleteOne(context.TODO(), bson.M{})
-        if err != nil {
-            return c.Status(500).JSON(fiber.Map{"error": "Failed to delete official partner information"})
-        }
+	// Delete official partner
+	route.Delete("/", func(c *fiber.Ctx) error {
+		collection := config.GetCollection(db, "official_partner")
+		result, err := collection.DeleteOne(context.TODO(), bson.M{})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to delete official partner information"})
+		}
 
-        if result.DeletedCount == 0 {
-            return c.Status(404).JSON(fiber.Map{"error": "Official partner information not found"})
-        }
+		if result.DeletedCount == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "Official partner information not found"})
+		}
 
-        return c.JSON(fiber.Map{"message": "Official partner information deleted successfully"})
-    })
+		return c.JSON(fiber.Map{"message": "Official partner information deleted successfully"})
+	})
 }
-

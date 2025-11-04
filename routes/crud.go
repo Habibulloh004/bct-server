@@ -479,6 +479,9 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 
 		// Populate category and top category names
 		for i := range products {
+			if products[i].Images == nil {
+				products[i].Images = []string{}
+			}
 			populateCategoryNames(db, &products[i])
 		}
 
@@ -508,6 +511,9 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 
 		// Populate category and top category names
 		populateCategoryNames(db, &product)
+		if product.Images == nil {
+			product.Images = []string{}
+		}
 
 		return c.JSON(product)
 	})
@@ -518,6 +524,25 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 		if err := c.BodyParser(&product); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 		}
+
+		if !product.Price.Valid() {
+			return c.Status(400).JSON(fiber.Map{"error": "price is required"})
+		}
+		if !product.Tax.Valid() {
+			return c.Status(400).JSON(fiber.Map{"error": "tax is required"})
+		}
+		if product.Count < 0 {
+			return c.Status(400).JSON(fiber.Map{"error": "count cannot be negative"})
+		}
+		if product.ShtrixNumber == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "shtrix_number is required"})
+		}
+		if product.Images == nil {
+			product.Images = []string{}
+		}
+
+		product.CategoryName = nil
+		product.TopCategoryName = nil
 
 		// Auto-populate top_category_id from category
 		if product.CategoryID != nil {
@@ -558,6 +583,53 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 		}
 
+		// Rename JSON fields to match stored BSON field names
+		if images, exists := updateData["images"]; exists {
+			updateData["image"] = images
+			delete(updateData, "images")
+		}
+
+		// Convert numeric fields to appropriate types
+		if priceVal, ok := updateData["price"]; ok {
+			if val, valid := toFloat64(priceVal); valid {
+				updateData["price"] = val
+			} else {
+				return c.Status(400).JSON(fiber.Map{"error": "price must be numeric"})
+			}
+		}
+		if discountVal, ok := updateData["discount"]; ok {
+			if discountVal == nil {
+				updateData["discount"] = nil
+			} else if val, valid := toFloat64(discountVal); valid {
+				updateData["discount"] = val
+			} else {
+				return c.Status(400).JSON(fiber.Map{"error": "discount must be numeric"})
+			}
+		}
+		if ndcVal, ok := updateData["NDC"]; ok {
+			if ndcVal == nil {
+				updateData["NDC"] = nil
+			} else if val, valid := toFloat64(ndcVal); valid {
+				updateData["NDC"] = val
+			} else {
+				return c.Status(400).JSON(fiber.Map{"error": "NDC must be numeric"})
+			}
+		}
+		if taxVal, ok := updateData["tax"]; ok {
+			if val, valid := toFloat64(taxVal); valid {
+				updateData["tax"] = val
+			} else {
+				return c.Status(400).JSON(fiber.Map{"error": "tax must be numeric"})
+			}
+		}
+		if countVal, ok := updateData["count"]; ok {
+			if val, valid := toInt(countVal); valid {
+				updateData["count"] = val
+			} else {
+				return c.Status(400).JSON(fiber.Map{"error": "count must be numeric"})
+			}
+		}
+
 		// Auto-populate top_category_id if category_id is being updated
 		if categoryIDInterface, exists := updateData["category_id"]; exists {
 			if categoryIDStr, ok := categoryIDInterface.(string); ok {
@@ -573,7 +645,18 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 			}
 		}
 
+		if topCategoryIDInterface, exists := updateData["top_category_id"]; exists {
+			if topCategoryStr, ok := topCategoryIDInterface.(string); ok {
+				if topCategoryID, err := primitive.ObjectIDFromHex(topCategoryStr); err == nil {
+					updateData["top_category_id"] = topCategoryID
+				}
+			}
+		}
+
+		delete(updateData, "category_name")
+		delete(updateData, "top_category_name")
 		delete(updateData, "_id")
+		delete(updateData, "created_at")
 		updateData["updated_at"] = time.Now()
 
 		collection := config.GetCollection(db, "products")
@@ -593,6 +676,9 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 
 		// Populate category names for response
 		populateCategoryNames(db, &product)
+		if product.Images == nil {
+			product.Images = []string{}
+		}
 
 		return c.JSON(product)
 	})
@@ -646,6 +732,9 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 
 		// Populate category names
 		for i := range products {
+			if products[i].Images == nil {
+				products[i].Images = []string{}
+			}
 			populateCategoryNames(db, &products[i])
 		}
 
@@ -689,6 +778,9 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 
 		// Populate category names
 		for i := range products {
+			if products[i].Images == nil {
+				products[i].Images = []string{}
+			}
 			populateCategoryNames(db, &products[i])
 		}
 
@@ -711,7 +803,8 @@ func populateCategoryNames(db *mongo.Client, product *models.Product) {
 		var category models.Category
 		err := categoryCollection.FindOne(context.TODO(), bson.M{"_id": product.CategoryID}).Decode(&category)
 		if err == nil {
-			product.CategoryName = category.Name
+			name := category.Name
+			product.CategoryName = &name
 		}
 	}
 
@@ -721,7 +814,8 @@ func populateCategoryNames(db *mongo.Client, product *models.Product) {
 		var topCategory models.TopCategory
 		err := topCategoryCollection.FindOne(context.TODO(), bson.M{"_id": product.TopCategoryID}).Decode(&topCategory)
 		if err == nil {
-			product.TopCategoryName = topCategory.Name
+			name := topCategory.Name
+			product.TopCategoryName = &name
 		}
 	}
 }

@@ -38,17 +38,75 @@ type UserAuthResponse struct {
 	User  User   `json:"user"`
 }
 
-// Client model (from schema diagram)
+// OrderHistoryProduct documents goods associated with a company/client order.
+type OrderHistoryProduct struct {
+	ID           string      `json:"id" bson:"id"`
+	Name         string      `json:"name" bson:"name"`
+	Price        FlexFloat64 `json:"price" bson:"price"`
+	Quantity     int         `json:"quantity" bson:"quantity"`
+	SerialNumber string      `json:"serial_number" bson:"serial_number"`
+	ShtrixNumber string      `json:"shtrix_number,omitempty" bson:"shtrix_number,omitempty"`
+	CreatedAt    time.Time   `json:"created_at" bson:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at" bson:"updated_at"`
+}
+
+// OrderHistoryEntry captures order-level metadata for companies, clients, and counterparties.
+type OrderHistoryEntry struct {
+	ID          string                `json:"id" bson:"id"`
+	OrderNumber string                `json:"order_number" bson:"order_number"`
+	Price       FlexFloat64           `json:"price" bson:"price"`
+	Status      string                `json:"status" bson:"status"`
+	CreatedAt   time.Time             `json:"created_at" bson:"created_at"`
+	UpdatedAt   time.Time             `json:"updated_at" bson:"updated_at"`
+	Products    []OrderHistoryProduct `json:"products" bson:"products"`
+}
+
+// Company model aligns with CRM requirements.
+type Company struct {
+	ID           primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
+	Name         string              `json:"name" bson:"name"`
+	OrderCount   int                 `json:"order_count" bson:"order_count"`
+	TotalAmount  FlexFloat64         `json:"total_amount" bson:"total_amount"`
+	Email        string              `json:"email" bson:"email"`
+	Inn          string              `json:"inn" bson:"inn"`
+	Address      string              `json:"address" bson:"address"`
+	Phone        string              `json:"phone" bson:"phone"`
+	Comment      *string             `json:"comment,omitempty" bson:"comment,omitempty"`
+	CreatedAt    time.Time           `json:"created_at" bson:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at" bson:"updated_at"`
+	OrderHistory []OrderHistoryEntry `json:"order_history" bson:"order_history"`
+}
+
+// Client model (CRM-centric)
 type Client struct {
-	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	Name      string             `json:"name" bson:"name"`
-	Email     string             `json:"email" bson:"email"`
-	Password  string             `json:"password" bson:"password"`
-	Phone     string             `json:"phone" bson:"phone"`
-	Image     string             `json:"image" bson:"image"`
-	URL       string             `json:"url" bson:"url"`
-	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
-	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+	ID           primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
+	FirstName    string              `json:"first_name" bson:"first_name"`
+	LastName     string              `json:"last_name" bson:"last_name"`
+	Email        string              `json:"email" bson:"email"`
+	Phone        string              `json:"phone" bson:"phone"`
+	CompanyPhone string              `json:"company_phone" bson:"company_phone"`
+	Company      string              `json:"company" bson:"company"`
+	Address      string              `json:"address" bson:"address"`
+	Comment      *string             `json:"comment,omitempty" bson:"comment,omitempty"`
+	CreatedAt    time.Time           `json:"created_at" bson:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at" bson:"updated_at"`
+	OrderHistory []OrderHistoryEntry `json:"order_history" bson:"order_history"`
+}
+
+// Counterparty model mirrors the client schema.
+type Counterparty struct {
+	ID           primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
+	FirstName    string              `json:"first_name" bson:"first_name"`
+	LastName     string              `json:"last_name" bson:"last_name"`
+	Email        string              `json:"email" bson:"email"`
+	Phone        string              `json:"phone" bson:"phone"`
+	CompanyPhone string              `json:"company_phone" bson:"company_phone"`
+	Company      string              `json:"company" bson:"company"`
+	Address      string              `json:"address" bson:"address"`
+	Comment      *string             `json:"comment,omitempty" bson:"comment,omitempty"`
+	CreatedAt    time.Time           `json:"created_at" bson:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at" bson:"updated_at"`
+	OrderHistory []OrderHistoryEntry `json:"order_history" bson:"order_history"`
 }
 
 // TopCategory model (updated)
@@ -76,18 +134,20 @@ type Product struct {
 	ID              primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
 	Name            string              `json:"name" bson:"name"`
 	AdsTitle        string              `json:"ads_title" bson:"ads_title"`
-	Image           []string            `json:"image" bson:"image"`
+	Images          []string            `json:"images" bson:"image"`
 	Description     string              `json:"description" bson:"description"`
 	Guarantee       string              `json:"guarantee" bson:"guarantee"`
 	SerialNumber    string              `json:"serial_number" bson:"serial_number"`
-	Price           string              `json:"price" bson:"price"`
-	Discount        string              `json:"discount,omitempty" bson:"discount,omitempty"`
-	Active          bool                `json:"active" bson:"active"`
-	Index           int                 `json:"index" bson:"index"`
+	ShtrixNumber    string              `json:"shtrix_number" bson:"shtrix_number"`
+	Price           FlexFloat64         `json:"price" bson:"price"`
+	Discount        FlexFloat64         `json:"discount" bson:"discount,omitempty"`
 	CategoryID      *primitive.ObjectID `json:"category_id" bson:"category_id"`
 	TopCategoryID   *primitive.ObjectID `json:"top_category_id" bson:"top_category_id"`
-	CategoryName    string              `json:"category_name,omitempty" bson:"category_name,omitempty"`
-	TopCategoryName string              `json:"top_category_name,omitempty" bson:"top_category_name,omitempty"`
+	CategoryName    *string             `json:"category_name" bson:"category_name,omitempty"`
+	TopCategoryName *string             `json:"top_category_name" bson:"top_category_name,omitempty"`
+	Count           int                 `json:"count" bson:"count"`
+	NDC             FlexFloat64         `json:"NDC" bson:"NDC,omitempty"`
+	Tax             FlexFloat64         `json:"tax" bson:"tax"`
 	CreatedAt       time.Time           `json:"created_at" bson:"created_at"`
 	UpdatedAt       time.Time           `json:"updated_at" bson:"updated_at"`
 }
@@ -106,6 +166,34 @@ type Order struct {
 type ProductWithCount struct {
 	ProductID primitive.ObjectID `json:"product_id" bson:"product_id"`
 	Count     int                `json:"count" bson:"count"`
+}
+
+// ContractProduct details individual goods in a contract agreement.
+type ContractProduct struct {
+	ProductID    primitive.ObjectID `json:"product_id" bson:"product_id"`
+	Price        FlexFloat64        `json:"price" bson:"price"`
+	Quantity     int                `json:"quantity" bson:"quantity"`
+	Discount     FlexFloat64        `json:"discount" bson:"discount,omitempty"`
+	SerialNumber string             `json:"serial_number" bson:"serial_number"`
+	ShtrixNumber string             `json:"shtrix_number,omitempty" bson:"shtrix_number,omitempty"`
+}
+
+// Contract represents agreements among clients, counterparties, and companies.
+type Contract struct {
+	ID               primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	ClientID         primitive.ObjectID `json:"client_id" bson:"client_id"`
+	CounterpartyID   primitive.ObjectID `json:"counterparty_id" bson:"counterparty_id"`
+	CompanyID        primitive.ObjectID `json:"company_id" bson:"company_id"`
+	Guarantee        string             `json:"guarantee" bson:"guarantee"`
+	Comment          string             `json:"comment" bson:"comment"`
+	DealDate         time.Time          `json:"deal_date" bson:"deal_date"`
+	ContractAmount   FlexFloat64        `json:"contract_amount" bson:"contract_amount"`
+	ContractCurrency string             `json:"contract_currency" bson:"contract_currency"`
+	PayCard          FlexFloat64        `json:"pay_card" bson:"pay_card"`
+	PayCash          FlexFloat64        `json:"pay_cash" bson:"pay_cash"`
+	CreatedAt        time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt        time.Time          `json:"updated_at" bson:"updated_at"`
+	Products         []ContractProduct  `json:"products" bson:"products"`
 }
 
 // About model (from schema diagram)
@@ -306,58 +394,68 @@ type CategorySort struct {
 
 // File upload response
 type FileUploadResponse struct {
-    URL      string `json:"url"`
-    Filename string `json:"filename"`
-    Size     int64  `json:"size"`
+	URL      string `json:"url"`
+	Filename string `json:"filename"`
+	Size     int64  `json:"size"`
 }
 
 // Discount model (singleton)
 type Discount struct {
-    ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-    Title     string             `json:"title" bson:"title"`
-    ProductID string             `json:"product_id" bson:"product_id"`
-    CreatedAt time.Time          `json:"created_at" bson:"created_at"`
-    UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Title     string             `json:"title" bson:"title"`
+	ProductID string             `json:"product_id" bson:"product_id"`
+	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
 // Vendors_about model
 type Vendors_about struct {
-    ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-    Name        string             `json:"name" bson:"name"`
-    Description string             `json:"description" bson:"description"`
-    Image       string             `json:"image" bson:"image"`
-    CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
-    UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
+	ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Name        string             `json:"name" bson:"name"`
+	Description string             `json:"description" bson:"description"`
+	Image       string             `json:"image" bson:"image"`
+	CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
 // Official_partner model (singleton)
 type Official_partner struct {
-    ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-    Name        string             `json:"name" bson:"name"`
-    Image       string             `json:"image" bson:"image"`
-    Description string             `json:"description" bson:"description"`
-    CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
-    UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
+	ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Name        string             `json:"name" bson:"name"`
+	Image       string             `json:"image" bson:"image"`
+	Description string             `json:"description" bson:"description"`
+	CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
 // Experiments model
 type Experiments struct {
-    ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-    Count       string             `json:"count" bson:"count"`
-    Title       string             `json:"title" bson:"title"`
-    Description string             `json:"description" bson:"description"`
-    CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
-    UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
+	ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Count       string             `json:"count" bson:"count"`
+	Title       string             `json:"title" bson:"title"`
+	Description string             `json:"description" bson:"description"`
+	CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
 // Company_stats model
 type Company_stats struct {
-    ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-    Count       string             `json:"count" bson:"count"`
-    Title       string             `json:"title" bson:"title"`
-    Description string             `json:"description" bson:"description"`
-    Image       string             `json:"image" bson:"image"`
-    CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
-    UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
+	ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Count       string             `json:"count" bson:"count"`
+	Title       string             `json:"title" bson:"title"`
+	Description string             `json:"description" bson:"description"`
+	Image       string             `json:"image" bson:"image"`
+	CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
+// Funnel represents CRM funnel stages.
+type Funnel struct {
+	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Name      string             `json:"name" bson:"name"`
+	Color     string             `json:"color" bson:"color"`
+	Comment   string             `json:"comment" bson:"comment"`
+	Order     int                `json:"order" bson:"order"`
+	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+}

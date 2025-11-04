@@ -65,6 +65,11 @@ func main() {
 	routes.CategoryRoutes(api, db)
 	routes.ProductRoutes(api, db) // Updated with category names and price
 	routes.OrderRoutes(api, db)   // Updated to reference users instead of clients
+	routes.CompanyRoutes(api, db)
+	routes.ClientRoutes(api, db)
+	routes.CounterpartyRoutes(api, db)
+	routes.ContractRoutes(api, db)
+	routes.FunnelRoutes(api, db)
 
 	// Information pages (singleton models)
 	routes.AboutRoutes(api, db)
@@ -175,4 +180,3 @@ func main() {
 
 	log.Fatal(app.Listen(":" + port))
 }
-
