@@ -35,7 +35,7 @@ COPY --from=builder /app/main ./main
 COPY --from=builder /app/uploads ./uploads
 
 # Expose port
-EXPOSE 3000
+EXPOSE 9000
 
 # Run the binary
 CMD ["./main"]

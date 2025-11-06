@@ -48,7 +48,7 @@ cp .env.example .env
 make docker-up
 ```
 
-The API will be available at `http://localhost:3000`
+The API will be available at `http://localhost:9000`
 
 ### Local Development
 
@@ -182,7 +182,7 @@ MONGODB_URI=mongodb://admin:password123@localhost:27017/ecommerce?authSource=adm
 JWT_SECRET=your-super-secret-jwt-key-here
 
 # Server
-PORT=3000
+PORT=9000
 APP_ENV=development
 ```
 
@@ -190,7 +190,7 @@ APP_ENV=development
 
 ### Admin Registration
 ```bash
-curl -X POST http://localhost:3000/api/admin/register \
+curl -X POST http://localhost:9000/api/admin/register \
   -H "Content-Type: application/json" \
   -d '{
     "name": "superadmin",
@@ -200,7 +200,7 @@ curl -X POST http://localhost:3000/api/admin/register \
 
 ### Admin Login
 ```bash
-curl -X POST http://localhost:3000/api/admin/login \
+curl -X POST http://localhost:9000/api/admin/login \
   -H "Content-Type: application/json" \
   -d '{
     "name": "admin",
@@ -210,7 +210,7 @@ curl -X POST http://localhost:3000/api/admin/login \
 
 ### User Registration
 ```bash
-curl -X POST http://localhost:3000/api/auth/register \
+curl -X POST http://localhost:9000/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "name": "John Doe",
@@ -222,7 +222,7 @@ curl -X POST http://localhost:3000/api/auth/register \
 
 ### Create Product (Admin Protected)
 ```bash
-curl -X POST http://localhost:3000/api/products \
+curl -X POST http://localhost:9000/api/products \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <admin-token>" \
   -d '{
@@ -238,7 +238,7 @@ curl -X POST http://localhost:3000/api/products \
 
 ### Upload File (Admin Protected)
 ```bash
-curl -X POST http://localhost:3000/api/files/upload \
+curl -X POST http://localhost:9000/api/files/upload \
   -H "Authorization: Bearer <admin-token>" \
   -F "file=@/path/to/your/image.jpg"
 ```

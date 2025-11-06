@@ -182,8 +182,12 @@ type ContractProduct struct {
 type Contract struct {
 	ID               primitive.ObjectID `json:"id" bson:"_id,omitempty"`
 	ClientID         primitive.ObjectID `json:"client_id" bson:"client_id"`
+	ClientName       *string            `json:"client_name,omitempty" bson:"client_name,omitempty"`
 	CounterpartyID   primitive.ObjectID `json:"counterparty_id" bson:"counterparty_id"`
+	CounterpartyName *string            `json:"counterparty_name,omitempty" bson:"counterparty_name,omitempty"`
 	CompanyID        primitive.ObjectID `json:"company_id" bson:"company_id"`
+	CompanyName      *string            `json:"company_name,omitempty" bson:"company_name,omitempty"`
+	FunnelID         primitive.ObjectID `json:"funnel_id" bson:"funnel_id"`
 	Guarantee        string             `json:"guarantee" bson:"guarantee"`
 	Comment          string             `json:"comment" bson:"comment"`
 	DealDate         time.Time          `json:"deal_date" bson:"deal_date"`

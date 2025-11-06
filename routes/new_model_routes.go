@@ -1,7 +1,9 @@
 package routes
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"strconv"
 	"time"
 
@@ -623,45 +625,148 @@ func ContractRoutes(app fiber.Router, db *mongo.Client) {
 
 		collection := config.GetCollection(db, "contracts")
 
-		var existing models.Contract
-		err = collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&existing)
-		if err != nil {
-			return c.Status(404).JSON(fiber.Map{"error": "Contract not found"})
+		body := c.Body()
+		if len(body) == 0 {
+			return c.Status(400).JSON(fiber.Map{"error": "Request body cannot be empty"})
 		}
 
-		var payload models.Contract
-		if err := c.BodyParser(&payload); err != nil {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(body, &raw); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 		}
 
-		if payload.ClientID.IsZero() || payload.CounterpartyID.IsZero() || payload.CompanyID.IsZero() {
-			return c.Status(400).JSON(fiber.Map{"error": "client_id, counterparty_id and company_id are required"})
+		unset := bson.M{}
+		set := bson.M{}
+
+		isNull := func(v json.RawMessage) bool {
+			return bytes.Equal(bytes.TrimSpace(v), []byte("null"))
 		}
 
-		if normalized, ok := normalizeCurrency(payload.ContractCurrency); ok {
-			payload.ContractCurrency = normalized
-		} else {
-			return c.Status(400).JSON(fiber.Map{"error": "contract_currency must be one of UZS, USD, EUR"})
+		parseObjectID := func(field string, value json.RawMessage) (primitive.ObjectID, error) {
+			var hex string
+			if err := json.Unmarshal(value, &hex); err != nil {
+				return primitive.NilObjectID, err
+			}
+			return primitive.ObjectIDFromHex(hex)
 		}
 
-		if payload.DealDate.IsZero() {
-			return c.Status(400).JSON(fiber.Map{"error": "deal_date is required"})
+		sanitized := []string{"_id", "id", "created_at", "updated_at"}
+		for _, key := range sanitized {
+			delete(raw, key)
 		}
 
-		if payload.Products == nil {
-			payload.Products = []models.ContractProduct{}
+		for key, value := range raw {
+			switch key {
+			case "client_id", "counterparty_id", "company_id", "funnel_id":
+				if isNull(value) {
+					return c.Status(400).JSON(fiber.Map{"error": key + " cannot be null"})
+				}
+				oid, err := parseObjectID(key, value)
+				if err != nil {
+					return c.Status(400).JSON(fiber.Map{"error": "Invalid " + key})
+				}
+				set[key] = oid
+			case "client_name", "counterparty_name", "company_name":
+				if isNull(value) {
+					unset[key] = ""
+					continue
+				}
+				var name string
+				if err := json.Unmarshal(value, &name); err != nil {
+					return c.Status(400).JSON(fiber.Map{"error": "Invalid " + key})
+				}
+				set[key] = name
+			case "guarantee", "comment":
+				if isNull(value) {
+					return c.Status(400).JSON(fiber.Map{"error": key + " cannot be null"})
+				}
+				var text string
+				if err := json.Unmarshal(value, &text); err != nil {
+					return c.Status(400).JSON(fiber.Map{"error": "Invalid " + key})
+				}
+				set[key] = text
+			case "deal_date":
+				if isNull(value) {
+					return c.Status(400).JSON(fiber.Map{"error": "deal_date cannot be null"})
+				}
+				var dateStr string
+				if err := json.Unmarshal(value, &dateStr); err != nil {
+					return c.Status(400).JSON(fiber.Map{"error": "Invalid deal_date"})
+				}
+				parsed, err := time.Parse(time.RFC3339, dateStr)
+				if err != nil {
+					return c.Status(400).JSON(fiber.Map{"error": "deal_date must be in RFC3339 format"})
+				}
+				set["deal_date"] = parsed
+			case "contract_currency":
+				if isNull(value) {
+					return c.Status(400).JSON(fiber.Map{"error": "contract_currency cannot be null"})
+				}
+				var currency string
+				if err := json.Unmarshal(value, &currency); err != nil {
+					return c.Status(400).JSON(fiber.Map{"error": "Invalid contract_currency"})
+				}
+				if normalized, ok := normalizeCurrency(currency); ok {
+					set["contract_currency"] = normalized
+				} else {
+					return c.Status(400).JSON(fiber.Map{"error": "contract_currency must be one of UZS, USD, EUR"})
+				}
+			case "contract_amount", "pay_card", "pay_cash":
+				var flex models.FlexFloat64
+				if err := json.Unmarshal(value, &flex); err != nil {
+					return c.Status(400).JSON(fiber.Map{"error": "Invalid " + key})
+				}
+				set[key] = flex
+			case "products":
+				if isNull(value) {
+					set[key] = []models.ContractProduct{}
+					continue
+				}
+				var products []models.ContractProduct
+				if err := json.Unmarshal(value, &products); err != nil {
+					return c.Status(400).JSON(fiber.Map{"error": "Invalid products"})
+				}
+				if products == nil {
+					products = []models.ContractProduct{}
+				}
+				set[key] = products
+			default:
+				// Ignore unknown fields to allow forward compatibility.
+			}
 		}
 
-		payload.ID = id
-		payload.CreatedAt = existing.CreatedAt
-		payload.UpdatedAt = time.Now()
+		if len(set) == 0 && len(unset) == 0 {
+			return c.Status(400).JSON(fiber.Map{"error": "No updatable fields provided"})
+		}
 
-		_, err = collection.ReplaceOne(context.TODO(), bson.M{"_id": id}, payload)
+		set["updated_at"] = time.Now()
+
+		updateDoc := bson.M{}
+		if len(set) > 0 {
+			updateDoc["$set"] = set
+		}
+		if len(unset) > 0 {
+			updateDoc["$unset"] = unset
+		}
+
+		result, err := collection.UpdateOne(context.TODO(), bson.M{"_id": id}, updateDoc)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to update contract"})
 		}
+		if result.MatchedCount == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "Contract not found"})
+		}
 
-		return c.JSON(payload)
+		var updated models.Contract
+		if err := collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&updated); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to load updated contract"})
+		}
+
+		if updated.Products == nil {
+			updated.Products = []models.ContractProduct{}
+		}
+
+		return c.JSON(updated)
 	})
 
 	contracts.Delete("/:id", func(c *fiber.Ctx) error {

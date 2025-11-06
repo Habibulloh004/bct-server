@@ -1,10 +1,10 @@
 # Postman Testing Guide
 
-This guide describes how to exercise every REST endpoint exposed by the Fiber API with Postman. It assumes the application runs locally at `http://localhost:3000`.
+This guide describes how to exercise every REST endpoint exposed by the Fiber API with Postman. It assumes the application runs locally at `http://localhost:9000`.
 
 ## 1. Environment Setup
 - Create a Postman environment with the following variables:
-  - `baseUrl` = `http://localhost:3000`
+  - `baseUrl` = `http://localhost:9000`
   - `apiPrefix` = `{{baseUrl}}/api`
   - `adminToken` = _(fill after admin login)_
   - `userToken` = _(fill after user login)_

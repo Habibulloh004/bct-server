@@ -4,7 +4,7 @@ info:
   schema: https://schema.getpostman.com/json/collection/v2.1.0/collection.json
 variable:
   - key: baseUrl
-    value: http://localhost:3000
+    value: http://localhost:9000
   - key: adminToken
     value: ''
   - key: userToken
@@ -890,7 +890,7 @@ item:
                     "products": [
                       {
                         "product_id": "{{productId}}",
-                        "price": 30000000,
+                        "price": 90000000,
                         "quantity": 2,
                         "discount": 4000000,
                         "serial_number": "SN-123",

@@ -163,7 +163,7 @@ func main() {
 	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "3000"
+		port = "9000"
 	}
 
 	log.Printf("🚀 Server starting on port %s", port)

@@ -7,7 +7,7 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:3000"
+      "value": "http://localhost:9000"
     },
     {
       "key": "adminToken",
@@ -1256,7 +1256,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"client_id\": \"{{clientId}}\",\n  \"counterparty_id\": \"{{counterpartyId}}\",\n  \"company_id\": \"{{companyId}}\",\n  \"guarantee\": \"24 months\",\n  \"comment\": \"Updated contract terms\",\n  \"deal_date\": \"2024-09-01T00:00:00Z\",\n  \"contract_amount\": 150000000,\n  \"contract_currency\": \"UZS\",\n  \"pay_card\": 90000000,\n  \"pay_cash\": 60000000,\n  \"products\": [\n    {\n      \"product_id\": \"{{productId}}\",\n      \"price\": 30000000,\n      \"quantity\": 2,\n      \"discount\": 4000000,\n      \"serial_number\": \"SN-123\",\n      \"shtrix_number\": \"SH-123\"\n    }\n  ]\n}"
+                  "raw": "{\n  \"client_id\": \"{{clientId}}\",\n  \"counterparty_id\": \"{{counterpartyId}}\",\n  \"company_id\": \"{{companyId}}\",\n  \"guarantee\": \"24 months\",\n  \"comment\": \"Updated contract terms\",\n  \"deal_date\": \"2024-09-01T00:00:00Z\",\n  \"contract_amount\": 150000000,\n  \"contract_currency\": \"UZS\",\n  \"pay_card\": 90000000,\n  \"pay_cash\": 60000000,\n  \"products\": [\n    {\n      \"product_id\": \"{{productId}}\",\n      \"price\": 90000000,\n      \"quantity\": 2,\n      \"discount\": 4000000,\n      \"serial_number\": \"SN-123\",\n      \"shtrix_number\": \"SH-123\"\n    }\n  ]\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/contracts/{{contractId}}",

@@ -24,7 +24,7 @@ services:
     container_name: fiber-app
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "9000:9000"
     depends_on:
       - mongodb
     environment:
