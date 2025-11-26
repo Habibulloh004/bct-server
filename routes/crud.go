@@ -525,20 +525,21 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 		}
 
+		// Validate required fields: name, images, description, price, category_id
+		if product.Name == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "name is required"})
+		}
+		if product.Images == nil || len(product.Images) == 0 {
+			return c.Status(400).JSON(fiber.Map{"error": "images is required"})
+		}
+		if product.Description == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "description is required"})
+		}
 		if !product.Price.Valid() {
 			return c.Status(400).JSON(fiber.Map{"error": "price is required"})
 		}
-		if !product.Tax.Valid() {
-			return c.Status(400).JSON(fiber.Map{"error": "tax is required"})
-		}
-		if product.Count < 0 {
-			return c.Status(400).JSON(fiber.Map{"error": "count cannot be negative"})
-		}
-		if product.ShtrixNumber == "" {
-			return c.Status(400).JSON(fiber.Map{"error": "shtrix_number is required"})
-		}
-		if product.Images == nil {
-			product.Images = []string{}
+		if product.CategoryID == nil {
+			return c.Status(400).JSON(fiber.Map{"error": "category_id is required"})
 		}
 
 		product.CategoryName = nil

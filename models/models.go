@@ -129,25 +129,26 @@ type Category struct {
 	UpdatedAt       time.Time           `json:"updated_at" bson:"updated_at"`
 }
 
-// Product model (updated with all required fields)
+// Product model (updated with minimal required fields)
+// Required fields: name, images, description, price, category_id
 type Product struct {
 	ID              primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
 	Name            string              `json:"name" bson:"name"`
-	AdsTitle        string              `json:"ads_title" bson:"ads_title"`
+	AdsTitle        string              `json:"ads_title,omitempty" bson:"ads_title,omitempty"`
 	Images          []string            `json:"images" bson:"image"`
 	Description     string              `json:"description" bson:"description"`
-	Guarantee       string              `json:"guarantee" bson:"guarantee"`
-	SerialNumber    string              `json:"serial_number" bson:"serial_number"`
-	ShtrixNumber    string              `json:"shtrix_number" bson:"shtrix_number"`
+	Guarantee       string              `json:"guarantee,omitempty" bson:"guarantee,omitempty"`
+	SerialNumber    string              `json:"serial_number,omitempty" bson:"serial_number,omitempty"`
+	ShtrixNumber    string              `json:"shtrix_number,omitempty" bson:"shtrix_number,omitempty"`
 	Price           FlexFloat64         `json:"price" bson:"price"`
-	Discount        FlexFloat64         `json:"discount" bson:"discount,omitempty"`
+	Discount        FlexFloat64         `json:"discount,omitempty" bson:"discount,omitempty"`
 	CategoryID      *primitive.ObjectID `json:"category_id" bson:"category_id"`
-	TopCategoryID   *primitive.ObjectID `json:"top_category_id" bson:"top_category_id"`
-	CategoryName    *string             `json:"category_name" bson:"category_name,omitempty"`
-	TopCategoryName *string             `json:"top_category_name" bson:"top_category_name,omitempty"`
-	Count           int                 `json:"count" bson:"count"`
-	NDC             FlexFloat64         `json:"NDC" bson:"NDC,omitempty"`
-	Tax             FlexFloat64         `json:"tax" bson:"tax"`
+	TopCategoryID   *primitive.ObjectID `json:"top_category_id,omitempty" bson:"top_category_id,omitempty"`
+	CategoryName    *string             `json:"category_name,omitempty" bson:"category_name,omitempty"`
+	TopCategoryName *string             `json:"top_category_name,omitempty" bson:"top_category_name,omitempty"`
+	Count           int                 `json:"count,omitempty" bson:"count,omitempty"`
+	NDC             FlexFloat64         `json:"NDC,omitempty" bson:"NDC,omitempty"`
+	Tax             FlexFloat64         `json:"tax,omitempty" bson:"tax,omitempty"`
 	CreatedAt       time.Time           `json:"created_at" bson:"created_at"`
 	UpdatedAt       time.Time           `json:"updated_at" bson:"updated_at"`
 }
