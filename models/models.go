@@ -333,7 +333,7 @@ type News struct {
 	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
-// Blog stores a localized editorial post. Title and Text use the existing
+// Blog stores a localized editorial post. Image, Title and Text use the existing
 // "english***russian***uzbek" format shared by the admin and storefront.
 type Blog struct {
 	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`

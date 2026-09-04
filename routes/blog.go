@@ -49,8 +49,8 @@ func localizedFieldIsComplete(value string, richText bool) bool {
 }
 
 func validateBlog(blog models.Blog) error {
-	if strings.TrimSpace(blog.Image) == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "Blog image is required")
+	if !localizedFieldIsComplete(blog.Image, false) {
+		return fiber.NewError(fiber.StatusBadRequest, "Blog image is required in English, Russian and Uzbek")
 	}
 	if !localizedFieldIsComplete(blog.Title, false) {
 		return fiber.NewError(fiber.StatusBadRequest, "Blog title is required in English, Russian and Uzbek")

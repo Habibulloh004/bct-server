@@ -15,7 +15,7 @@ func TestValidateBlogRequiresEveryLanguage(t *testing.T) {
 		{
 			name: "complete blog",
 			blog: models.Blog{
-				Image: "/uploads/cover.webp",
+				Image: "/uploads/cover-en.webp***/uploads/cover-ru.webp***/uploads/cover-uz.webp",
 				Title: "English title***Русский заголовок***O‘zbekcha sarlavha",
 				Text:  "<p>English text</p>***<p>Русский текст</p>***<p>O‘zbekcha matn</p>",
 			},
@@ -23,7 +23,7 @@ func TestValidateBlogRequiresEveryLanguage(t *testing.T) {
 		{
 			name: "missing localized title",
 			blog: models.Blog{
-				Image: "/uploads/cover.webp",
+				Image: "/uploads/cover-en.webp***/uploads/cover-ru.webp***/uploads/cover-uz.webp",
 				Title: "English title******O‘zbekcha sarlavha",
 				Text:  "<p>English text</p>***<p>Русский текст</p>***<p>O‘zbekcha matn</p>",
 			},
@@ -32,15 +32,16 @@ func TestValidateBlogRequiresEveryLanguage(t *testing.T) {
 		{
 			name: "empty rich text markup",
 			blog: models.Blog{
-				Image: "/uploads/cover.webp",
+				Image: "/uploads/cover-en.webp***/uploads/cover-ru.webp***/uploads/cover-uz.webp",
 				Title: "English title***Русский заголовок***O‘zbekcha sarlavha",
 				Text:  "<p><br></p>***<p>Русский текст</p>***<p>O‘zbekcha matn</p>",
 			},
 			wantErr: true,
 		},
 		{
-			name: "missing image",
+			name: "missing localized image",
 			blog: models.Blog{
+				Image: "/uploads/cover-en.webp******/uploads/cover-uz.webp",
 				Title: "English title***Русский заголовок***O‘zbekcha sarlavha",
 				Text:  "<p>English text</p>***<p>Русский текст</p>***<p>O‘zbekcha matn</p>",
 			},
