@@ -183,12 +183,24 @@ func SuccessResponse(data interface{}, message ...string) fiber.Map {
 // Validate file extension for uploads
 func IsValidImageExtension(filename string) bool {
 	validExtensions := map[string]bool{
-		".jpg":  true,
-		".jpeg": true,
-		".png":  true,
-		".gif":  true,
-		".webp": true,
-		".svg":  true,
+		".jpg":   true,
+		".jpeg":  true,
+		".jfif":  true,
+		".pjpeg": true,
+		".pjp":   true,
+		".png":   true,
+		".apng":  true,
+		".gif":   true,
+		".webp":  true,
+		".svg":   true,
+		".avif":  true,
+		".heic":  true,
+		".heif":  true,
+		".bmp":   true,
+		".dib":   true,
+		".tif":   true,
+		".tiff":  true,
+		".ico":   true,
 	}
 
 	// Get file extension

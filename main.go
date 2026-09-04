@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"fiber-ecommerce/config"
@@ -37,9 +38,65 @@ func main() {
 	// Middleware
 	app.Use(recover.New())
 	app.Use(logger.New())
-	// Updated CORS middleware configuration
+	allowedOrigins := map[string]struct{}{
+		"http://localhost:3000":              {},
+		"http://127.0.0.1:3000":              {},
+		"http://localhost:5173":              {},
+		"https://bct-erp-nine.vercel.app":    {},
+		"https://bct-admin-eight.vercel.app": {},
+	}
+
+	isAllowedLocalNetworkOrigin := func(origin string) bool {
+		if !strings.HasPrefix(origin, "http://") {
+			return false
+		}
+
+		hostWithPort := strings.TrimPrefix(origin, "http://")
+		parts := strings.Split(hostWithPort, ":")
+		if len(parts) != 2 {
+			return false
+		}
+
+		host := parts[0]
+		port := parts[1]
+		if port != "3000" && port != "5173" {
+			return false
+		}
+
+		if strings.HasPrefix(host, "192.168.") || strings.HasPrefix(host, "10.") {
+			return true
+		}
+
+		private172Prefixes := []string{
+			"172.16.", "172.17.", "172.18.", "172.19.",
+			"172.20.", "172.21.", "172.22.", "172.23.",
+			"172.24.", "172.25.", "172.26.", "172.27.",
+			"172.28.", "172.29.", "172.30.", "172.31.",
+		}
+		for _, prefix := range private172Prefixes {
+			if strings.HasPrefix(host, prefix) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	allowOriginFunc := func(origin string) bool {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			return true
+		}
+
+		if _, ok := allowedOrigins[origin]; ok {
+			return true
+		}
+
+		return isAllowedLocalNetworkOrigin(origin)
+	}
+
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:5173,https://bct-erp-nine.vercel.app,https://bct-admin-eight.vercel.app",
+		AllowOriginsFunc: allowOriginFunc,
 		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS,HEAD",
 		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,Access-Control-Allow-Origin,Access-Control-Allow-Headers,Access-Control-Allow-Methods,Access-Control-Allow-Credentials,X-Requested-With",
 		AllowCredentials: true,
@@ -70,6 +127,8 @@ func main() {
 	routes.CounterpartyRoutes(api, db)
 	routes.ContractRoutes(api, db)
 	routes.FunnelRoutes(api, db)
+	routes.WarehouseRoutes(api, db)
+	routes.ERPTransactionRoutes(api, db)
 
 	// Information pages (singleton models)
 	routes.AboutRoutes(api, db)
@@ -89,6 +148,7 @@ func main() {
 	routes.SertificateRoutes(api, db)
 	routes.LicenseRoutes(api, db)
 	routes.NewsRoutes(api, db)
+	routes.BlogRoutes(api, db)
 	routes.PartnerRoutes(api, db)
 	routes.AdminRoutes(api, db)
 	routes.CurrencyRoutes(api, db)
@@ -163,7 +223,7 @@ func main() {
 	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "3000"
+		port = "9000"
 	}
 
 	log.Printf("🚀 Server starting on port %s", port)

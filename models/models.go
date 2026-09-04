@@ -43,9 +43,11 @@ type OrderHistoryProduct struct {
 	ID           string      `json:"id" bson:"id"`
 	Name         string      `json:"name" bson:"name"`
 	Price        FlexFloat64 `json:"price" bson:"price"`
+	Currency     string      `json:"currency,omitempty" bson:"currency,omitempty"`
 	Quantity     int         `json:"quantity" bson:"quantity"`
 	SerialNumber string      `json:"serial_number" bson:"serial_number"`
 	ShtrixNumber string      `json:"shtrix_number,omitempty" bson:"shtrix_number,omitempty"`
+	Guarantee    string      `json:"guarantee,omitempty" bson:"guarantee,omitempty"`
 	CreatedAt    time.Time   `json:"created_at" bson:"created_at"`
 	UpdatedAt    time.Time   `json:"updated_at" bson:"updated_at"`
 }
@@ -55,6 +57,7 @@ type OrderHistoryEntry struct {
 	ID          string                `json:"id" bson:"id"`
 	OrderNumber string                `json:"order_number" bson:"order_number"`
 	Price       FlexFloat64           `json:"price" bson:"price"`
+	Currency    string                `json:"currency,omitempty" bson:"currency,omitempty"`
 	Status      string                `json:"status" bson:"status"`
 	CreatedAt   time.Time             `json:"created_at" bson:"created_at"`
 	UpdatedAt   time.Time             `json:"updated_at" bson:"updated_at"`
@@ -132,25 +135,41 @@ type Category struct {
 // Product model (updated with minimal required fields)
 // Required fields: name, images, description, price, category_id
 type Product struct {
-	ID              primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
-	Name            string              `json:"name" bson:"name"`
-	AdsTitle        string              `json:"ads_title,omitempty" bson:"ads_title,omitempty"`
-	Images          []string            `json:"images" bson:"image"`
-	Description     string              `json:"description" bson:"description"`
-	Guarantee       string              `json:"guarantee,omitempty" bson:"guarantee,omitempty"`
-	SerialNumber    string              `json:"serial_number,omitempty" bson:"serial_number,omitempty"`
-	ShtrixNumber    string              `json:"shtrix_number,omitempty" bson:"shtrix_number,omitempty"`
-	Price           FlexFloat64         `json:"price" bson:"price"`
-	Discount        FlexFloat64         `json:"discount,omitempty" bson:"discount,omitempty"`
-	CategoryID      *primitive.ObjectID `json:"category_id" bson:"category_id"`
-	TopCategoryID   *primitive.ObjectID `json:"top_category_id,omitempty" bson:"top_category_id,omitempty"`
-	CategoryName    *string             `json:"category_name,omitempty" bson:"category_name,omitempty"`
-	TopCategoryName *string             `json:"top_category_name,omitempty" bson:"top_category_name,omitempty"`
-	Count           int                 `json:"count,omitempty" bson:"count,omitempty"`
-	NDC             FlexFloat64         `json:"NDC,omitempty" bson:"NDC,omitempty"`
-	Tax             FlexFloat64         `json:"tax,omitempty" bson:"tax,omitempty"`
-	CreatedAt       time.Time           `json:"created_at" bson:"created_at"`
-	UpdatedAt       time.Time           `json:"updated_at" bson:"updated_at"`
+	ID               primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
+	Name             string              `json:"name" bson:"name"`
+	AdsTitle         string              `json:"ads_title,omitempty" bson:"ads_title,omitempty"`
+	Images           []string            `json:"images" bson:"image"`
+	Description      string              `json:"description" bson:"description"`
+	Guarantee        string              `json:"guarantee,omitempty" bson:"guarantee,omitempty"`
+	SerialNumber     string              `json:"serial_number,omitempty" bson:"serial_number,omitempty"`
+	ShtrixNumber     string              `json:"shtrix_number,omitempty" bson:"shtrix_number,omitempty"`
+	Price            FlexFloat64         `json:"price" bson:"price"`
+	Discount         FlexFloat64         `json:"discount,omitempty" bson:"discount,omitempty"`
+	CategoryID       *primitive.ObjectID `json:"category_id" bson:"category_id"`
+	TopCategoryID    *primitive.ObjectID `json:"top_category_id,omitempty" bson:"top_category_id,omitempty"`
+	CategoryName     *string             `json:"category_name,omitempty" bson:"category_name,omitempty"`
+	TopCategoryName  *string             `json:"top_category_name,omitempty" bson:"top_category_name,omitempty"`
+	Count            int                 `json:"count,omitempty" bson:"count,omitempty"`
+	WarehouseID      string              `json:"warehouse_id,omitempty" bson:"warehouse_id,omitempty"`
+	Warehouse        string              `json:"warehouse,omitempty" bson:"warehouse,omitempty"`
+	StockByWarehouse map[string]int      `json:"stock_by_warehouse,omitempty" bson:"stock_by_warehouse,omitempty"`
+	NDC              FlexFloat64         `json:"NDC,omitempty" bson:"NDC,omitempty"`
+	Tax              FlexFloat64         `json:"tax,omitempty" bson:"tax,omitempty"`
+	OwnerAdminID     string              `json:"owner_admin_id,omitempty" bson:"owner_admin_id,omitempty"`
+	IsTestData       bool                `json:"is_test_data,omitempty" bson:"is_test_data,omitempty"`
+	CreatedAt        time.Time           `json:"created_at" bson:"created_at"`
+	UpdatedAt        time.Time           `json:"updated_at" bson:"updated_at"`
+}
+
+// Warehouse is the ERP warehouse directory used by inventory operations.
+type Warehouse struct {
+	ID        string    `json:"id" bson:"_id,omitempty"`
+	Name      string    `json:"name" bson:"name"`
+	Address   string    `json:"address" bson:"address"`
+	Comment   string    `json:"comment,omitempty" bson:"comment,omitempty"`
+	IsActive  bool      `json:"is_active" bson:"is_active"`
+	CreatedAt time.Time `json:"created_at" bson:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" bson:"updated_at"`
 }
 
 // Order model (from schema diagram)
@@ -177,11 +196,13 @@ type ContractProduct struct {
 	Discount     FlexFloat64        `json:"discount" bson:"discount,omitempty"`
 	SerialNumber string             `json:"serial_number" bson:"serial_number"`
 	ShtrixNumber string             `json:"shtrix_number,omitempty" bson:"shtrix_number,omitempty"`
+	Guarantee    string             `json:"guarantee,omitempty" bson:"guarantee,omitempty"`
 }
 
 // Contract represents agreements among clients, counterparties, and companies.
 type Contract struct {
 	ID               primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	ContractNumber   string             `json:"contract_number,omitempty" bson:"contract_number,omitempty"`
 	ClientID         primitive.ObjectID `json:"client_id" bson:"client_id"`
 	ClientName       *string            `json:"client_name,omitempty" bson:"client_name,omitempty"`
 	CounterpartyID   primitive.ObjectID `json:"counterparty_id" bson:"counterparty_id"`
@@ -196,9 +217,37 @@ type Contract struct {
 	ContractCurrency string             `json:"contract_currency" bson:"contract_currency"`
 	PayCard          FlexFloat64        `json:"pay_card" bson:"pay_card"`
 	PayCash          FlexFloat64        `json:"pay_cash" bson:"pay_cash"`
+	Documents        []string           `json:"documents" bson:"documents"`
 	CreatedAt        time.Time          `json:"created_at" bson:"created_at"`
 	UpdatedAt        time.Time          `json:"updated_at" bson:"updated_at"`
 	Products         []ContractProduct  `json:"products" bson:"products"`
+}
+
+// ERPTransaction is the unified business journal entry for finance, deals, and inventory.
+type ERPTransaction struct {
+	ID               primitive.ObjectID     `json:"id" bson:"_id,omitempty"`
+	DocumentID       string                 `json:"document_id" bson:"document_id"`
+	Kind             string                 `json:"kind" bson:"kind"`
+	Type             string                 `json:"type" bson:"type"`
+	Category         string                 `json:"category,omitempty" bson:"category,omitempty"`
+	Status           string                 `json:"status" bson:"status"`
+	Amount           FlexFloat64            `json:"amount" bson:"amount"`
+	Currency         string                 `json:"currency,omitempty" bson:"currency,omitempty"`
+	Source           string                 `json:"source,omitempty" bson:"source,omitempty"`
+	Destination      string                 `json:"destination,omitempty" bson:"destination,omitempty"`
+	PaymentMethod    string                 `json:"payment_method,omitempty" bson:"payment_method,omitempty"`
+	Comment          string                 `json:"comment,omitempty" bson:"comment,omitempty"`
+	Reason           string                 `json:"reason,omitempty" bson:"reason,omitempty"`
+	ReferenceType    string                 `json:"reference_type,omitempty" bson:"reference_type,omitempty"`
+	ReferenceID      string                 `json:"reference_id,omitempty" bson:"reference_id,omitempty"`
+	RelatedContract  string                 `json:"related_contract,omitempty" bson:"related_contract,omitempty"`
+	RelatedProduct   string                 `json:"related_product,omitempty" bson:"related_product,omitempty"`
+	RelatedWarehouse string                 `json:"related_warehouse,omitempty" bson:"related_warehouse,omitempty"`
+	Quantity         int                    `json:"quantity,omitempty" bson:"quantity,omitempty"`
+	OperationAt      time.Time              `json:"operation_at,omitempty" bson:"operation_at,omitempty"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty" bson:"metadata,omitempty"`
+	CreatedAt        time.Time              `json:"created_at" bson:"created_at"`
+	UpdatedAt        time.Time              `json:"updated_at" bson:"updated_at"`
 }
 
 // About model (from schema diagram)
@@ -284,6 +333,17 @@ type News struct {
 	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
+// Blog stores a localized editorial post. Title and Text use the existing
+// "english***russian***uzbek" format shared by the admin and storefront.
+type Blog struct {
+	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Title     string             `json:"title" bson:"title"`
+	Text      string             `json:"text" bson:"text"`
+	Image     string             `json:"image" bson:"image"`
+	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+}
+
 // Partner model
 type Partner struct {
 	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
@@ -295,11 +355,13 @@ type Partner struct {
 
 // Admin model
 type Admin struct {
-	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	Name      string             `json:"name" bson:"name"`
-	Password  string             `json:"password" bson:"password"`
-	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
-	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+	ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Name        string             `json:"name" bson:"name"`
+	Role        string             `json:"role" bson:"role"`
+	Permissions []string           `json:"permissions" bson:"permissions"`
+	Password    string             `json:"password" bson:"password"`
+	CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
 // Currency model

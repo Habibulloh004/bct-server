@@ -3,9 +3,11 @@ package routes
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"fiber-ecommerce/config"
+	"fiber-ecommerce/middleware"
 	"fiber-ecommerce/models"
 
 	"github.com/gofiber/fiber/v2"
@@ -16,6 +18,45 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+func normalizeAdminRole(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "admin", "manager", "warehouse", "finance", "viewer":
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		return "manager"
+	}
+}
+
+func requireAdminRole(db *mongo.Client) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		if role, ok := c.Locals("admin_role").(string); ok && normalizeAdminRole(role) == "admin" {
+			return c.Next()
+		}
+
+		adminID, ok := c.Locals("admin_id").(string)
+		if !ok || adminID == "" {
+			return c.Status(401).JSON(fiber.Map{"error": "Invalid or missing admin token"})
+		}
+
+		objectID, err := primitive.ObjectIDFromHex(adminID)
+		if err != nil {
+			return c.Status(401).JSON(fiber.Map{"error": "Invalid admin token"})
+		}
+
+		collection := config.GetCollection(db, "admins")
+		var admin models.Admin
+		if err := collection.FindOne(context.TODO(), bson.M{"_id": objectID}).Decode(&admin); err != nil {
+			return c.Status(401).JSON(fiber.Map{"error": "Admin not found"})
+		}
+
+		if normalizeAdminRole(admin.Role) != "admin" {
+			return c.Status(403).JSON(fiber.Map{"error": "Administrator role required"})
+		}
+
+		return c.Next()
+	}
+}
+
 // Generic CRUD helper function
 func genericCRUD(app fiber.Router, db *mongo.Client, routeName, collectionName string, model interface{}) {
 	route := app.Group("/" + routeName)
@@ -23,13 +64,13 @@ func genericCRUD(app fiber.Router, db *mongo.Client, routeName, collectionName s
 	// Get all
 	route.Get("/", func(c *fiber.Ctx) error {
 		collection := config.GetCollection(db, collectionName)
-		
+
 		page, _ := strconv.Atoi(c.Query("page", "1"))
 		limit, _ := strconv.Atoi(c.Query("limit", "10"))
 		skip := (page - 1) * limit
 
 		opts := options.Find().SetSkip(int64(skip)).SetLimit(int64(limit)).SetSort(bson.D{{Key: "created_at", Value: -1}})
-		
+
 		cursor, err := collection.Find(context.TODO(), bson.M{}, opts)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch " + routeName})
@@ -77,7 +118,7 @@ func genericCRUD(app fiber.Router, db *mongo.Client, routeName, collectionName s
 
 		data["created_at"] = time.Now()
 		data["updated_at"] = time.Now()
-		
+
 		collection := config.GetCollection(db, collectionName)
 		result, err := collection.InsertOne(context.TODO(), data)
 		if err != nil {
@@ -105,7 +146,7 @@ func genericCRUD(app fiber.Router, db *mongo.Client, routeName, collectionName s
 
 		collection := config.GetCollection(db, collectionName)
 		update := bson.M{"$set": updateData}
-		
+
 		result, err := collection.UpdateOne(context.TODO(), bson.M{"_id": id}, update)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to update " + routeName})
@@ -164,17 +205,19 @@ func PartnerRoutes(app fiber.Router, db *mongo.Client) {
 // Admin CRUD with password hashing
 func AdminRoutes(app fiber.Router, db *mongo.Client) {
 	admins := app.Group("/admins")
+	admins.Use(middleware.AdminJWTMiddleware())
+	admins.Use(requireAdminRole(db))
 
 	// Get all admins
 	admins.Get("/", func(c *fiber.Ctx) error {
 		collection := config.GetCollection(db, "admins")
-		
+
 		page, _ := strconv.Atoi(c.Query("page", "1"))
 		limit, _ := strconv.Atoi(c.Query("limit", "10"))
 		skip := (page - 1) * limit
 
 		opts := options.Find().SetSkip(int64(skip)).SetLimit(int64(limit)).SetSort(bson.D{{Key: "created_at", Value: -1}})
-		
+
 		cursor, err := collection.Find(context.TODO(), bson.M{}, opts)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch admins"})
@@ -189,6 +232,10 @@ func AdminRoutes(app fiber.Router, db *mongo.Client) {
 		// Remove passwords from response
 		for i := range admins {
 			admins[i].Password = ""
+			if admins[i].Role == "" {
+				admins[i].Role = "admin"
+			}
+			admins[i].Permissions = normalizeAdminPermissions(admins[i].Role, admins[i].Permissions)
 		}
 
 		total, _ := collection.CountDocuments(context.TODO(), bson.M{})
@@ -216,6 +263,10 @@ func AdminRoutes(app fiber.Router, db *mongo.Client) {
 		}
 
 		admin.Password = "" // Don't return password
+		if admin.Role == "" {
+			admin.Role = "admin"
+		}
+		admin.Permissions = normalizeAdminPermissions(admin.Role, admin.Permissions)
 		return c.JSON(admin)
 	})
 
@@ -224,6 +275,20 @@ func AdminRoutes(app fiber.Router, db *mongo.Client) {
 		var admin models.Admin
 		if err := c.BodyParser(&admin); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+		if admin.Name == "" || admin.Password == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "Name and password are required"})
+		}
+		admin.Role = normalizeAdminRole(admin.Role)
+		admin.Permissions = normalizeAdminPermissions(admin.Role, admin.Permissions)
+
+		collection := config.GetCollection(db, "admins")
+		existing, err := collection.CountDocuments(context.TODO(), bson.M{"name": admin.Name})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to validate admin"})
+		}
+		if existing > 0 {
+			return c.Status(409).JSON(fiber.Map{"error": "Admin with this name already exists"})
 		}
 
 		// Hash password
@@ -235,8 +300,7 @@ func AdminRoutes(app fiber.Router, db *mongo.Client) {
 		admin.Password = string(hashedPassword)
 		admin.CreatedAt = time.Now()
 		admin.UpdatedAt = time.Now()
-		
-		collection := config.GetCollection(db, "admins")
+
 		result, err := collection.InsertOne(context.TODO(), admin)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to create admin"})
@@ -258,14 +322,52 @@ func AdminRoutes(app fiber.Router, db *mongo.Client) {
 		if err := c.BodyParser(&updateData); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 		}
+		if name, exists := updateData["name"]; exists {
+			nameValue, ok := name.(string)
+			if !ok || nameValue == "" {
+				return c.Status(400).JSON(fiber.Map{"error": "Name is required"})
+			}
+			collection := config.GetCollection(db, "admins")
+			existing, err := collection.CountDocuments(context.TODO(), bson.M{"name": nameValue, "_id": bson.M{"$ne": id}})
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "Failed to validate admin"})
+			}
+			if existing > 0 {
+				return c.Status(409).JSON(fiber.Map{"error": "Admin with this name already exists"})
+			}
+		}
 
 		// Hash password if provided
 		if password, exists := updateData["password"]; exists && password != "" {
-			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password.(string)), bcrypt.DefaultCost)
+			passwordValue, ok := password.(string)
+			if !ok {
+				return c.Status(400).JSON(fiber.Map{"error": "Invalid password"})
+			}
+			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(passwordValue), bcrypt.DefaultCost)
 			if err != nil {
 				return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
 			}
 			updateData["password"] = string(hashedPassword)
+		} else {
+			delete(updateData, "password")
+		}
+		if role, exists := updateData["role"]; exists {
+			roleValue, ok := role.(string)
+			if !ok {
+				return c.Status(400).JSON(fiber.Map{"error": "Invalid role"})
+			}
+			updateData["role"] = normalizeAdminRole(roleValue)
+		}
+		roleValue, _ := updateData["role"].(string)
+		if roleValue == "" {
+			var existingAdmin models.Admin
+			collection := config.GetCollection(db, "admins")
+			if err := collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&existingAdmin); err == nil {
+				roleValue = normalizeAdminRole(existingAdmin.Role)
+			}
+		}
+		if permissions, exists := updateData["permissions"]; exists {
+			updateData["permissions"] = normalizePermissionsFromInput(roleValue, permissions)
 		}
 
 		delete(updateData, "_id")
@@ -273,7 +375,7 @@ func AdminRoutes(app fiber.Router, db *mongo.Client) {
 
 		collection := config.GetCollection(db, "admins")
 		update := bson.M{"$set": updateData}
-		
+
 		result, err := collection.UpdateOne(context.TODO(), bson.M{"_id": id}, update)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to update admin"})
@@ -286,6 +388,10 @@ func AdminRoutes(app fiber.Router, db *mongo.Client) {
 		var admin models.Admin
 		collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&admin)
 		admin.Password = "" // Don't return password
+		if admin.Role == "" {
+			admin.Role = "admin"
+		}
+		admin.Permissions = normalizeAdminPermissions(admin.Role, admin.Permissions)
 		return c.JSON(admin)
 	})
 
@@ -297,6 +403,18 @@ func AdminRoutes(app fiber.Router, db *mongo.Client) {
 		}
 
 		collection := config.GetCollection(db, "admins")
+		currentAdminID, _ := primitive.ObjectIDFromHex(c.Locals("admin_id").(string))
+		if currentAdminID == id {
+			return c.Status(409).JSON(fiber.Map{"error": "Current admin cannot be deleted"})
+		}
+		totalAdmins, err := collection.CountDocuments(context.TODO(), bson.M{})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to validate admin"})
+		}
+		if totalAdmins <= 1 {
+			return c.Status(409).JSON(fiber.Map{"error": "At least one admin is required"})
+		}
+
 		result, err := collection.DeleteOne(context.TODO(), bson.M{"_id": id})
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to delete admin"})
@@ -347,21 +465,20 @@ func TopCategorySortRoutes(app fiber.Router, db *mongo.Client) {
 
 // CategorySort CRUD
 func CategorySortRoutes(app fiber.Router, db *mongo.Client) {
-    genericCRUD(app, db, "category-sorts", "category_sorts", models.CategorySort{})
+	genericCRUD(app, db, "category-sorts", "category_sorts", models.CategorySort{})
 }
 
 // Vendors_about CRUD
 func VendorsAboutRoutes(app fiber.Router, db *mongo.Client) {
-    genericCRUD(app, db, "vendors-about", "vendors_about", models.Vendors_about{})
+	genericCRUD(app, db, "vendors-about", "vendors_about", models.Vendors_about{})
 }
 
 // Experiments CRUD
 func ExperimentsRoutes(app fiber.Router, db *mongo.Client) {
-    genericCRUD(app, db, "experiments", "experiments", models.Experiments{})
+	genericCRUD(app, db, "experiments", "experiments", models.Experiments{})
 }
 
 // Company_stats CRUD
 func CompanyStatsRoutes(app fiber.Router, db *mongo.Client) {
-    genericCRUD(app, db, "company-stats", "company_stats", models.Company_stats{})
+	genericCRUD(app, db, "company-stats", "company_stats", models.Company_stats{})
 }
-

@@ -98,8 +98,8 @@ func CompanyRoutes(app fiber.Router, db *mongo.Client) {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 		}
 
-		if payload.Name == "" || payload.Email == "" || payload.Inn == "" || payload.Address == "" || payload.Phone == "" {
-			return c.Status(400).JSON(fiber.Map{"error": "Name, email, inn, address and phone are required"})
+		if payload.Name == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "Name is required"})
 		}
 
 		now := time.Now()
@@ -186,6 +186,15 @@ func CompanyRoutes(app fiber.Router, db *mongo.Client) {
 		}
 
 		collection := config.GetCollection(db, "companies")
+		contractsCollection := config.GetCollection(db, "contracts")
+		linkedContracts, err := contractsCollection.CountDocuments(context.TODO(), bson.M{"company_id": id})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to validate company usage"})
+		}
+		if linkedContracts > 0 {
+			return c.Status(409).JSON(fiber.Map{"error": "Company is linked to existing contracts"})
+		}
+
 		result, err := collection.DeleteOne(context.TODO(), bson.M{"_id": id})
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to delete company"})
@@ -417,8 +426,8 @@ func CounterpartyRoutes(app fiber.Router, db *mongo.Client) {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 		}
 
-		if payload.FirstName == "" || payload.LastName == "" || payload.Email == "" || payload.Phone == "" {
-			return c.Status(400).JSON(fiber.Map{"error": "First name, last name, email and phone are required"})
+		if payload.FirstName == "" || payload.LastName == "" || payload.Phone == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "First name, last name and phone are required"})
 		}
 
 		now := time.Now()
@@ -488,6 +497,15 @@ func CounterpartyRoutes(app fiber.Router, db *mongo.Client) {
 		}
 
 		collection := config.GetCollection(db, "counterparties")
+		contractsCollection := config.GetCollection(db, "contracts")
+		linkedContracts, err := contractsCollection.CountDocuments(context.TODO(), bson.M{"counterparty_id": id})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to validate counterparty usage"})
+		}
+		if linkedContracts > 0 {
+			return c.Status(409).JSON(fiber.Map{"error": "Counterparty is linked to existing contracts"})
+		}
+
 		result, err := collection.DeleteOne(context.TODO(), bson.M{"_id": id})
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to delete counterparty"})
@@ -499,6 +517,167 @@ func CounterpartyRoutes(app fiber.Router, db *mongo.Client) {
 
 		return c.JSON(fiber.Map{"message": "Counterparty deleted successfully"})
 	})
+}
+
+type contractHistoryTarget struct {
+	Collection string
+	ID         primitive.ObjectID
+}
+
+func contractHistoryTargets(contract models.Contract) []contractHistoryTarget {
+	return []contractHistoryTarget{
+		{Collection: "clients", ID: contract.ClientID},
+		{Collection: "counterparties", ID: contract.CounterpartyID},
+		{Collection: "companies", ID: contract.CompanyID},
+	}
+}
+
+func contractHistoryID(contract models.Contract) string {
+	if !contract.ID.IsZero() {
+		return contract.ID.Hex()
+	}
+	if contract.ContractNumber != "" {
+		return contract.ContractNumber
+	}
+	return ""
+}
+
+func buildContractHistoryEntry(db *mongo.Client, contract models.Contract) models.OrderHistoryEntry {
+	now := time.Now()
+	purchaseDate := contract.DealDate
+	if purchaseDate.IsZero() {
+		purchaseDate = contract.CreatedAt
+	}
+	if purchaseDate.IsZero() {
+		purchaseDate = now
+	}
+
+	entryID := contractHistoryID(contract)
+	orderNumber := contract.ContractNumber
+	if orderNumber == "" {
+		orderNumber = entryID
+	}
+
+	productsCollection := config.GetCollection(db, "products")
+	products := make([]models.OrderHistoryProduct, 0, len(contract.Products))
+	for _, item := range contract.Products {
+		productName := item.ProductID.Hex()
+		serialNumber := item.SerialNumber
+		shtrixNumber := item.ShtrixNumber
+		guarantee := item.Guarantee
+
+		if !item.ProductID.IsZero() {
+			var product models.Product
+			if err := productsCollection.FindOne(context.TODO(), bson.M{"_id": item.ProductID}).Decode(&product); err == nil {
+				if product.Name != "" {
+					productName = product.Name
+				}
+				if serialNumber == "" {
+					serialNumber = product.SerialNumber
+				}
+				if shtrixNumber == "" {
+					shtrixNumber = product.ShtrixNumber
+				}
+				if guarantee == "" {
+					guarantee = product.Guarantee
+				}
+			}
+		}
+
+		products = append(products, models.OrderHistoryProduct{
+			ID:           item.ProductID.Hex(),
+			Name:         productName,
+			Price:        item.Price,
+			Currency:     contract.ContractCurrency,
+			Quantity:     item.Quantity,
+			SerialNumber: serialNumber,
+			ShtrixNumber: shtrixNumber,
+			Guarantee:    guarantee,
+			CreatedAt:    purchaseDate,
+			UpdatedAt:    now,
+		})
+	}
+
+	return models.OrderHistoryEntry{
+		ID:          entryID,
+		OrderNumber: orderNumber,
+		Price:       contract.ContractAmount,
+		Currency:    contract.ContractCurrency,
+		Status:      "contract",
+		CreatedAt:   purchaseDate,
+		UpdatedAt:   now,
+		Products:    products,
+	}
+}
+
+func removeContractHistoryFromEntities(db *mongo.Client, contract models.Contract) error {
+	entryID := contractHistoryID(contract)
+	if entryID == "" {
+		return nil
+	}
+
+	now := time.Now()
+	for _, target := range contractHistoryTargets(contract) {
+		if target.ID.IsZero() {
+			continue
+		}
+		collection := config.GetCollection(db, target.Collection)
+		_, err := collection.UpdateOne(
+			context.TODO(),
+			bson.M{"_id": target.ID},
+			bson.M{
+				"$pull": bson.M{"order_history": bson.M{"id": entryID}},
+				"$set":  bson.M{"updated_at": now},
+			},
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func syncContractHistory(db *mongo.Client, previous *models.Contract, current models.Contract) error {
+	if previous != nil {
+		if err := removeContractHistoryFromEntities(db, *previous); err != nil {
+			return err
+		}
+	}
+
+	entryID := contractHistoryID(current)
+	if entryID == "" {
+		return nil
+	}
+
+	entry := buildContractHistoryEntry(db, current)
+	now := time.Now()
+	for _, target := range contractHistoryTargets(current) {
+		if target.ID.IsZero() {
+			continue
+		}
+		collection := config.GetCollection(db, target.Collection)
+		if _, err := collection.UpdateOne(
+			context.TODO(),
+			bson.M{"_id": target.ID},
+			bson.M{
+				"$pull": bson.M{"order_history": bson.M{"id": entryID}},
+				"$set":  bson.M{"updated_at": now},
+			},
+		); err != nil {
+			return err
+		}
+		if _, err := collection.UpdateOne(
+			context.TODO(),
+			bson.M{"_id": target.ID},
+			bson.M{
+				"$push": bson.M{"order_history": entry},
+				"$set":  bson.M{"updated_at": now},
+			},
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Contract CRUD
@@ -547,6 +726,9 @@ func ContractRoutes(app fiber.Router, db *mongo.Client) {
 			if contractsList[i].Products == nil {
 				contractsList[i].Products = []models.ContractProduct{}
 			}
+			if contractsList[i].Documents == nil {
+				contractsList[i].Documents = []string{}
+			}
 		}
 
 		total, _ := collection.CountDocuments(context.TODO(), filter)
@@ -574,6 +756,9 @@ func ContractRoutes(app fiber.Router, db *mongo.Client) {
 
 		if contract.Products == nil {
 			contract.Products = []models.ContractProduct{}
+		}
+		if contract.Documents == nil {
+			contract.Documents = []string{}
 		}
 
 		return c.JSON(contract)
@@ -603,6 +788,9 @@ func ContractRoutes(app fiber.Router, db *mongo.Client) {
 		if contract.Products == nil {
 			contract.Products = []models.ContractProduct{}
 		}
+		if contract.Documents == nil {
+			contract.Documents = []string{}
+		}
 
 		contract.CreatedAt = now
 		contract.UpdatedAt = now
@@ -614,6 +802,12 @@ func ContractRoutes(app fiber.Router, db *mongo.Client) {
 		}
 
 		contract.ID = result.InsertedID.(primitive.ObjectID)
+		if err := syncContractHistory(db, nil, contract); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to sync contract history"})
+		}
+		if err := upsertContractERPTransaction(db, contract); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to sync ERP transaction"})
+		}
 		return c.Status(201).JSON(contract)
 	})
 
@@ -624,6 +818,14 @@ func ContractRoutes(app fiber.Router, db *mongo.Client) {
 		}
 
 		collection := config.GetCollection(db, "contracts")
+
+		var previous models.Contract
+		if err := collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&previous); err != nil {
+			if err == mongo.ErrNoDocuments {
+				return c.Status(404).JSON(fiber.Map{"error": "Contract not found"})
+			}
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to load contract"})
+		}
 
 		body := c.Body()
 		if len(body) == 0 {
@@ -676,7 +878,7 @@ func ContractRoutes(app fiber.Router, db *mongo.Client) {
 					return c.Status(400).JSON(fiber.Map{"error": "Invalid " + key})
 				}
 				set[key] = name
-			case "guarantee", "comment":
+			case "contract_number", "guarantee", "comment":
 				if isNull(value) {
 					return c.Status(400).JSON(fiber.Map{"error": key + " cannot be null"})
 				}
@@ -730,6 +932,19 @@ func ContractRoutes(app fiber.Router, db *mongo.Client) {
 					products = []models.ContractProduct{}
 				}
 				set[key] = products
+			case "documents":
+				if isNull(value) {
+					set[key] = []string{}
+					continue
+				}
+				var documents []string
+				if err := json.Unmarshal(value, &documents); err != nil {
+					return c.Status(400).JSON(fiber.Map{"error": "Invalid documents"})
+				}
+				if documents == nil {
+					documents = []string{}
+				}
+				set[key] = documents
 			default:
 				// Ignore unknown fields to allow forward compatibility.
 			}
@@ -765,6 +980,15 @@ func ContractRoutes(app fiber.Router, db *mongo.Client) {
 		if updated.Products == nil {
 			updated.Products = []models.ContractProduct{}
 		}
+		if updated.Documents == nil {
+			updated.Documents = []string{}
+		}
+		if err := syncContractHistory(db, &previous, updated); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to sync contract history"})
+		}
+		if err := upsertContractERPTransaction(db, updated); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to sync ERP transaction"})
+		}
 
 		return c.JSON(updated)
 	})
@@ -776,6 +1000,14 @@ func ContractRoutes(app fiber.Router, db *mongo.Client) {
 		}
 
 		collection := config.GetCollection(db, "contracts")
+		var contract models.Contract
+		if err := collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&contract); err != nil {
+			if err == mongo.ErrNoDocuments {
+				return c.Status(404).JSON(fiber.Map{"error": "Contract not found"})
+			}
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to load contract"})
+		}
+
 		result, err := collection.DeleteOne(context.TODO(), bson.M{"_id": id})
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to delete contract"})
@@ -785,6 +1017,12 @@ func ContractRoutes(app fiber.Router, db *mongo.Client) {
 			return c.Status(404).JSON(fiber.Map{"error": "Contract not found"})
 		}
 
+		if err := removeContractHistoryFromEntities(db, contract); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to sync contract history"})
+		}
+		if err := deleteERPTransactionsByReference(db, "contract", contract.ID.Hex()); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to delete ERP transaction"})
+		}
 		return c.JSON(fiber.Map{"message": "Contract deleted successfully"})
 	})
 }
@@ -869,8 +1107,8 @@ func ClientRoutes(app fiber.Router, db *mongo.Client) {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 		}
 
-		if payload.FirstName == "" || payload.LastName == "" || payload.Email == "" || payload.Phone == "" {
-			return c.Status(400).JSON(fiber.Map{"error": "First name, last name, email and phone are required"})
+		if payload.FirstName == "" || payload.LastName == "" || payload.Phone == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "First name, last name and phone are required"})
 		}
 
 		now := time.Now()
@@ -943,6 +1181,15 @@ func ClientRoutes(app fiber.Router, db *mongo.Client) {
 		}
 
 		collection := config.GetCollection(db, "clients")
+		contractsCollection := config.GetCollection(db, "contracts")
+		linkedContracts, err := contractsCollection.CountDocuments(context.TODO(), bson.M{"client_id": id})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to validate client usage"})
+		}
+		if linkedContracts > 0 {
+			return c.Status(409).JSON(fiber.Map{"error": "Client is linked to existing contracts"})
+		}
+
 		result, err := collection.DeleteOne(context.TODO(), bson.M{"_id": id})
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to delete client"})

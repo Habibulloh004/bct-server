@@ -423,6 +423,179 @@ func CategoryRoutes(app fiber.Router, db *mongo.Client) {
 func ProductRoutes(app fiber.Router, db *mongo.Client) {
 	products := app.Group("/products")
 
+	products.Patch("/:id/stock", func(c *fiber.Ctx) error {
+		id, err := primitive.ObjectIDFromHex(c.Params("id"))
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+		}
+
+		var payload InventoryTransactionPayload
+		if err := c.BodyParser(&payload); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+		payload.ProductID = id.Hex()
+
+		updated, _, err := ApplyInventoryTransactions(context.TODO(), db, []InventoryTransactionPayload{payload})
+		if err != nil {
+			return inventoryErrorResponse(c, err)
+		}
+
+		return c.JSON(updated[0])
+	})
+
+	products.Post("/stock/bulk", func(c *fiber.Ctx) error {
+		var payload InventoryBulkPayload
+		if err := c.BodyParser(&payload); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+
+		operations := payload.Operations
+		if len(operations) == 0 {
+			operations = payload.Items
+		}
+		for index := range operations {
+			if operations[index].Type == "" {
+				operations[index].Type = payload.Type
+			}
+			if operations[index].Reason == "" {
+				operations[index].Reason = payload.Reason
+			}
+			if operations[index].Comment == "" {
+				operations[index].Comment = payload.Comment
+			}
+		}
+
+		updated, operationDocs, err := ApplyInventoryTransactions(context.TODO(), db, operations)
+		if err != nil {
+			return inventoryErrorResponse(c, err)
+		}
+
+		return c.JSON(fiber.Map{
+			"data":        updated,
+			"operations":  operationDocs,
+			"total":       len(updated),
+			"transaction": "stock_operations",
+		})
+	})
+
+	products.Post("/stock/transfer", func(c *fiber.Ctx) error {
+		var payload InventoryBulkPayload
+		if err := c.BodyParser(&payload); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+		operations := payload.Operations
+		if len(operations) == 0 {
+			operations = payload.Items
+		}
+		for index := range operations {
+			operations[index].Type = "movement"
+			if operations[index].Reason == "" {
+				operations[index].Reason = payload.Reason
+			}
+			if operations[index].Comment == "" {
+				operations[index].Comment = payload.Comment
+			}
+		}
+		updated, operationDocs, err := ApplyInventoryTransactions(context.TODO(), db, operations)
+		if err != nil {
+			return inventoryErrorResponse(c, err)
+		}
+		return c.JSON(fiber.Map{"data": updated, "operations": operationDocs, "total": len(updated), "transaction": "stock_operations"})
+	})
+
+	products.Post("/stock/writeoff", func(c *fiber.Ctx) error {
+		var payload InventoryBulkPayload
+		if err := c.BodyParser(&payload); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+		operations := payload.Operations
+		if len(operations) == 0 {
+			operations = payload.Items
+		}
+		for index := range operations {
+			operations[index].Type = "writeoff"
+			if operations[index].Reason == "" {
+				operations[index].Reason = payload.Reason
+			}
+			if operations[index].Comment == "" {
+				operations[index].Comment = payload.Comment
+			}
+		}
+		updated, operationDocs, err := ApplyInventoryTransactions(context.TODO(), db, operations)
+		if err != nil {
+			return inventoryErrorResponse(c, err)
+		}
+		return c.JSON(fiber.Map{"data": updated, "operations": operationDocs, "total": len(updated), "transaction": "stock_operations"})
+	})
+
+	products.Post("/stock/audit", func(c *fiber.Ctx) error {
+		var payload InventoryBulkPayload
+		if err := c.BodyParser(&payload); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+		operations := payload.Operations
+		if len(operations) == 0 {
+			operations = payload.Items
+		}
+		for index := range operations {
+			operations[index].Type = "adjustment"
+			if operations[index].Reason == "" {
+				operations[index].Reason = payload.Reason
+			}
+			if operations[index].Comment == "" {
+				operations[index].Comment = payload.Comment
+			}
+		}
+		updated, operationDocs, err := ApplyInventoryTransactions(context.TODO(), db, operations)
+		if err != nil {
+			return inventoryErrorResponse(c, err)
+		}
+		return c.JSON(fiber.Map{"data": updated, "operations": operationDocs, "total": len(updated), "transaction": "stock_operations"})
+	})
+
+	products.Get("/stock/operations", func(c *fiber.Ctx) error {
+		page := 1
+		if p, err := strconv.Atoi(c.Query("page")); err == nil && p > 0 {
+			page = p
+		}
+		limit := 20
+		if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 {
+			limit = l
+		}
+		skip := (page - 1) * limit
+
+		filter := bson.M{}
+		if operationType := c.Query("type"); operationType != "" {
+			filter["type"] = normalizeInventoryType(operationType)
+		}
+		if productID := c.Query("product_id"); productID != "" {
+			if id, err := primitive.ObjectIDFromHex(productID); err == nil {
+				filter["product_id"] = id
+			}
+		}
+
+		operations := config.GetCollection(db, "stock_operations")
+		opts := options.Find().SetSkip(int64(skip)).SetLimit(int64(limit)).SetSort(bson.D{{Key: "created_at", Value: -1}})
+		cursor, err := operations.Find(context.TODO(), filter, opts)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch stock operations"})
+		}
+		defer cursor.Close(context.TODO())
+
+		var rows []bson.M
+		if err := cursor.All(context.TODO(), &rows); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to decode stock operations"})
+		}
+		total, _ := operations.CountDocuments(context.TODO(), filter)
+
+		return c.JSON(fiber.Map{
+			"data":  rows,
+			"total": total,
+			"page":  page,
+			"limit": limit,
+		})
+	})
+
 	// Get all products with category names populated
 	products.Get("/", func(c *fiber.Ctx) error {
 		collection := config.GetCollection(db, "products")
@@ -453,6 +626,12 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 			} else {
 				filter["top_category_id"] = topCategoryID
 			}
+		}
+		if ownerAdminID := c.Query("owner_admin_id"); ownerAdminID != "" {
+			filter["owner_admin_id"] = ownerAdminID
+		}
+		if isTestData := c.Query("is_test_data"); isTestData == "true" {
+			filter["is_test_data"] = true
 		}
 
 		// Search by name, ads_title, or description
@@ -541,9 +720,22 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 		if product.CategoryID == nil {
 			return c.Status(400).JSON(fiber.Map{"error": "category_id is required"})
 		}
+		if product.Count < 0 {
+			return c.Status(400).JSON(fiber.Map{"error": "count cannot be negative"})
+		}
 
 		product.CategoryName = nil
 		product.TopCategoryName = nil
+		if product.Count > 0 {
+			warehouseID := resolveInventoryWarehouseKey(product.WarehouseID, product.Warehouse)
+			product.WarehouseID = warehouseID
+			if product.Warehouse == "" {
+				product.Warehouse = resolveInventoryWarehouseLabel(product.WarehouseID, product.Warehouse)
+			}
+			product.StockByWarehouse = map[string]int{warehouseID: product.Count}
+		} else {
+			product.StockByWarehouse = map[string]int{}
+		}
 
 		// Auto-populate top_category_id from category
 		if product.CategoryID != nil {
@@ -625,7 +817,12 @@ func ProductRoutes(app fiber.Router, db *mongo.Client) {
 		}
 		if countVal, ok := updateData["count"]; ok {
 			if val, valid := toInt(countVal); valid {
-				updateData["count"] = val
+				if val < 0 {
+					return c.Status(400).JSON(fiber.Map{"error": "count cannot be negative"})
+				}
+				delete(updateData, "count")
+				delete(updateData, "stock_by_warehouse")
+				delete(updateData, "stockByWarehouse")
 			} else {
 				return c.Status(400).JSON(fiber.Map{"error": "count must be numeric"})
 			}
